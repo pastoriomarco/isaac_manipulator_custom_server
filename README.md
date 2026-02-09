@@ -1,9 +1,44 @@
 # isaac_manipulator_custom_server
 
-Top-level folder for custom Isaac Manipulator packages:
+Perception-centered extension package set for Isaac Manipulator.
+
+This repository focuses on one specific capability: robustly retrieving
+dynamic, multi-object 6D poses from a scene (for example, bin picking setups),
+and exposing them through a stable service interface that other systems can
+call on demand.
+
+Top-level packages:
 
 - `isaac_manipulator_pose_server`
 - `isaac_manipulator_server_interfaces`
+
+## Scope
+
+This repo provides:
+
+- A persistent scan server that can be triggered repeatedly.
+- A service API to rescan and return all currently detected object poses.
+- Multi-object aggregation logic on top of Isaac Manipulator perception servers.
+- Launch files for perception-only bringup and scan server bringup.
+
+This repo intentionally does **not** provide:
+
+- Full manipulation orchestration (planning/execution/control loops).
+- Robot driver bringup as a hard requirement for perception-only workflows.
+- End-to-end pick-and-place behavior trees.
+
+## How It Fits With Isaac Manipulator
+
+`isaac_manipulator_custom_server` depends on Isaac Manipulator perception
+components (`isaac_manipulator_servers`, interfaces, and FoundationPose/RT-DETR
+pipeline pieces). It does not replace Isaac Manipulator; it wraps and
+specializes it for reusable multi-object pose serving.
+
+In short:
+
+- Isaac Manipulator provides the core perception/action servers.
+- This repo adds a clean, reusable "scan and return object poses" layer for
+  downstream consumers (e.g., task planners or custom motion stacks).
 
 ## FoundationPose Quickstart Rosbag Test
 
