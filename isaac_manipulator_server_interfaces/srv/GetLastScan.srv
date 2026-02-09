@@ -1,0 +1,14 @@
+# Return the latest scan result without triggering a new scan.
+---
+bool success
+string message
+string output_frame_id
+int32 count
+int32 expected_count
+bool expected_count_met
+int32[] object_ids
+string[] class_ids
+float32[] class_scores
+string[] frame_names
+geometry_msgs/Pose[] poses
+string summary_json

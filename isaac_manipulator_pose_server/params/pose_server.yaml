@@ -1,0 +1,32 @@
+pose_server:
+  # Leave empty to accept any detected class id.
+  target_class_ids: []
+
+  # Shared mesh used for all selected objects.
+  # Must exist on disk and be readable by ObjectInfoServer.
+  shared_mesh_file_path: ''
+
+  # Frame names assigned per object: <object_frame_prefix>_<object_id>
+  object_frame_prefix: 'bin_object'
+
+  # 0 means all objects.
+  max_objects: 0
+
+  # Action and service endpoints from isaac_manipulator_servers/ObjectInfoServer.
+  get_objects_action_name: '/get_objects'
+  get_object_pose_action_name: '/get_object_pose'
+  add_mesh_service_name: '/add_mesh_to_object'
+  assign_name_service_name: '/assign_name_to_object'
+  clear_objects_service_name: '/clear_objects'
+
+  # Timeouts (seconds).
+  action_timeout_sec: 20.0
+  service_timeout_sec: 10.0
+
+  # Clear cached objects on success.
+  clear_objects_after_run: true
+
+  # Outputs.
+  output_frame_id: 'base_link'
+  output_pose_array_topic: '/custom_pose_bt/object_poses'
+  output_summary_topic: '/custom_pose_bt/object_pose_summary'
