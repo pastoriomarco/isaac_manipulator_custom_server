@@ -20,7 +20,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'config_file',
             default_value=default_config,
-            description='Path to custom pose BT config YAML.'
+            description='Path to pose server config YAML.'
         ),
         DeclareLaunchArgument('camera_type', default_value='REALSENSE'),
         DeclareLaunchArgument(

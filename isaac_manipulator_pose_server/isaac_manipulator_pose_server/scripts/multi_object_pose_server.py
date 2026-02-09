@@ -40,13 +40,13 @@ class MultiObjectPoseServer:
         callback_group = ReentrantCallbackGroup()
         self._scan_service = self._node.create_service(
             ScanBinObjects,
-            '/custom_pose_bt/scan_bin_objects',
+            '/isaac_manipulator_pose_server/scan_bin_objects',
             self._handle_scan_bin_objects,
             callback_group=callback_group,
         )
         self._last_scan_service = self._node.create_service(
             GetLastScan,
-            '/custom_pose_bt/get_last_scan',
+            '/isaac_manipulator_pose_server/get_last_scan',
             self._handle_get_last_scan,
             callback_group=callback_group,
         )

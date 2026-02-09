@@ -18,7 +18,6 @@ class WorkflowConfig:
     clear_objects_service_name: str
     action_timeout_sec: float
     service_timeout_sec: float
-    clear_objects_after_run: bool
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -36,23 +35,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'clear_objects_service_name': '/clear_objects',
     'action_timeout_sec': 20.0,
     'service_timeout_sec': 10.0,
-    'clear_objects_after_run': True,
     'output_frame_id': 'base_link',
-    'output_pose_array_topic': '/custom_pose_bt/object_poses',
-    'output_summary_topic': '/custom_pose_bt/object_pose_summary',
+    'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
+    'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
 }
-
-
-def _as_bool(value: Any, key_name: str) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered_value = value.strip().lower()
-        if lowered_value in ('true', '1', 'yes', 'on'):
-            return True
-        if lowered_value in ('false', '0', 'no', 'off'):
-            return False
-    raise ValueError(f'Invalid boolean value for "{key_name}": {value!r}')
 
 
 def load_config(config_file: str) -> WorkflowConfig:
@@ -92,8 +78,6 @@ def load_config(config_file: str) -> WorkflowConfig:
         clear_objects_service_name=str(merged_config['clear_objects_service_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         service_timeout_sec=float(merged_config['service_timeout_sec']),
-        clear_objects_after_run=_as_bool(
-            merged_config['clear_objects_after_run'], 'clear_objects_after_run'),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),

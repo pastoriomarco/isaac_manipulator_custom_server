@@ -13,14 +13,14 @@ The scan pipeline executes this sequence:
 5. Per-object pose estimation (`/get_object_pose`)
 6. Optional cache clear (`/clear_objects`)
 7. Publish:
-   - `geometry_msgs/PoseArray` on `/custom_pose_bt/object_poses`
-   - JSON summary on `/custom_pose_bt/object_pose_summary`
+   - `geometry_msgs/PoseArray` on `/isaac_manipulator_pose_server/object_poses`
+   - JSON summary on `/isaac_manipulator_pose_server/object_pose_summary`
 
 The package provides a persistent scan server (`multi_object_pose_server`) that stays alive and
 exposes services:
 
-- `/custom_pose_bt/scan_bin_objects`
-- `/custom_pose_bt/get_last_scan`
+- `/isaac_manipulator_pose_server/scan_bin_objects`
+- `/isaac_manipulator_pose_server/get_last_scan`
 
 ## Required upstream servers/topics
 
@@ -33,6 +33,15 @@ Before running this package, you must have the Isaac Manipulator perception/serv
 - (optional) `/clear_objects` service
 
 These are typically provided by `isaac_manipulator_servers` + perception bringup.
+
+Quick pre-check:
+
+```bash
+ros2 pkg prefix isaac_manipulator_pose_server
+ros2 pkg prefix isaac_manipulator_interfaces
+ros2 pkg prefix isaac_manipulator_bringup
+ros2 pkg prefix isaac_manipulator_servers
+```
 
 ## Attribution
 
@@ -49,7 +58,7 @@ ros2 launch isaac_manipulator_pose_server scan_server.launch.py
 Trigger a scan:
 
 ```bash
-ros2 service call /custom_pose_bt/scan_bin_objects \
+ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
   isaac_manipulator_server_interfaces/srv/ScanBinObjects \
   "{max_objects: 0, expected_count: 0, clear_objects_before_run: false, clear_objects_after_run: true}"
 ```
@@ -57,7 +66,7 @@ ros2 service call /custom_pose_bt/scan_bin_objects \
 Read last result (without rescanning):
 
 ```bash
-ros2 service call /custom_pose_bt/get_last_scan \
+ros2 service call /isaac_manipulator_pose_server/get_last_scan \
   isaac_manipulator_server_interfaces/srv/GetLastScan \
   "{}"
 ```
@@ -77,7 +86,7 @@ ros2 launch isaac_manipulator_pose_server scan_server_with_pipeline.launch.py \
 
 ### Recommended for rosbag/perception-only usage
 
-This launch starts only the perception stack required by this package:
+This launch starts a perception-only stack required by this package:
 
 - RT-DETR perception pipeline
 - FoundationPose node

@@ -23,10 +23,7 @@ pose_server:
   action_timeout_sec: 20.0
   service_timeout_sec: 10.0
 
-  # Clear cached objects on success.
-  clear_objects_after_run: true
-
   # Outputs.
   output_frame_id: 'base_link'
-  output_pose_array_topic: '/custom_pose_bt/object_poses'
-  output_summary_topic: '/custom_pose_bt/object_pose_summary'
+  output_pose_array_topic: '/isaac_manipulator_pose_server/object_poses'
+  output_summary_topic: '/isaac_manipulator_pose_server/object_pose_summary'

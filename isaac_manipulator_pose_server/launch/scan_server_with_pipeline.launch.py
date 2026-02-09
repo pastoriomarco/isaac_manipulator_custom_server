@@ -14,14 +14,14 @@ def generate_launch_description():
     package_share = get_package_share_directory('isaac_manipulator_pose_server')
     bringup_share = get_package_share_directory('isaac_manipulator_bringup')
 
-    default_bt_config = os.path.join(package_share, 'params', 'pose_server.yaml')
+    default_config = os.path.join(package_share, 'params', 'pose_server.yaml')
     default_workflow_config = os.path.join(
         bringup_share, 'params', 'ur5e_robotiq_85_soup_can.yaml')
 
     launch_args = [
         DeclareLaunchArgument(
             'config_file',
-            default_value=default_bt_config,
+            default_value=default_config,
             description='Path to the custom pose server configuration file.'
         ),
         DeclareLaunchArgument(
