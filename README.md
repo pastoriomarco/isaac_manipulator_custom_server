@@ -3,9 +3,9 @@
 Perception-centered extension package set for Isaac Manipulator.
 
 This repository focuses on one specific capability: robustly retrieving
-dynamic, multi-object 6D poses from a scene (for example, bin picking setups),
-and exposing them through a stable service interface that other systems can
-call on demand.
+dynamic, same-model multi-instance 6D poses from a scene (for example, bin
+picking setups), and exposing them through a stable service interface that
+other systems can call on demand.
 
 Top-level packages:
 
@@ -18,7 +18,8 @@ This repo provides:
 
 - A persistent scan server that can be triggered repeatedly.
 - A service API to rescan and return all currently detected object poses.
-- Multi-object aggregation logic on top of Isaac Manipulator perception servers.
+- Same-model multi-instance aggregation logic on top of Isaac Manipulator
+  perception servers.
 - Launch files for perception-only bringup and scan server bringup.
 
 This repo intentionally does **not** provide:
@@ -59,6 +60,7 @@ source install/setup.bash
 
 ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   camera_type:=ISAAC_SIM \
+  use_sim_time:=true \
   foundationpose_depth_topic:=/foundation_pose_server/depth \
   rgb_image_topic:=/image_rect \
   rgb_camera_info_topic:=/camera_info_rect \
@@ -86,6 +88,7 @@ Pre-check required packages in your sourced environment:
 
 ```bash
 ros2 pkg prefix isaac_manipulator_pose_server
+ros2 pkg prefix isaac_manipulator_server_interfaces
 ros2 pkg prefix isaac_manipulator_interfaces
 ros2 pkg prefix isaac_manipulator_bringup
 ros2 pkg prefix isaac_manipulator_servers
@@ -98,7 +101,7 @@ workspace/dependencies are built and sourced.
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-ros2 bag play -l "$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/quickstart.bag"
+ros2 bag play -l --clock "$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/quickstart.bag"
 ```
 
 ### Terminal 3: Trigger scan

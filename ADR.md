@@ -13,7 +13,7 @@ Accepted.
 This repository adds a perception-centered capability on top of Isaac Manipulator:
 
 - triggerable bin rescans
-- multi-object 6D pose extraction
+- same-model multi-instance 6D pose extraction
 - persistent service endpoint (server does not exit after one run)
 - normalized result payload for downstream consumers (e.g. task planners, BT frameworks, custom executors)
 
@@ -145,7 +145,7 @@ Request-level overrides:
 1. Consume response payload directly, or consume published `PoseArray`/summary topics.
 1. Use `/isaac_manipulator_pose_server/get_last_scan` when a cached result is sufficient.
 
-This design is intended for systems that need dynamic multi-object poses on demand, not only at startup.
+This design is intended for systems that need dynamic same-model multi-instance poses on demand, not only at startup.
 
 ## Consequences
 

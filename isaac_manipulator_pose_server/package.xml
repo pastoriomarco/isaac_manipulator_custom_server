@@ -4,7 +4,7 @@
 <package format="3">
   <name>isaac_manipulator_pose_server</name>
   <version>0.1.0</version>
-  <description>Service package to compute poses for multiple same-model objects in a bin using Isaac Manipulator servers.</description>
+  <description>Service package to compute poses for multiple instances of the same model in bin scenes using Isaac Manipulator perception servers.</description>
   <maintainer email="pastoriomarco@gmail.com">Marco Pastorio</maintainer>
   <license>Apache-2.0</license>
 
@@ -18,6 +18,8 @@
 
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>ros2launch</exec_depend>
+  <exec_depend>isaac_manipulator_bringup</exec_depend>
+  <exec_depend>isaac_manipulator_servers</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

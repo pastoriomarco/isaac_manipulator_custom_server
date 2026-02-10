@@ -5,7 +5,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetLaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
 
 
@@ -67,9 +67,17 @@ def generate_launch_description():
         DeclareLaunchArgument('score_engine_file_path', default_value='/tmp/score_trt_engine.plan'),
         DeclareLaunchArgument('refine_iterations', default_value='3'),
         DeclareLaunchArgument('symmetry_axes', default_value='["x_180", "y_180", "z_180"]'),
-        DeclareLaunchArgument('discard_old_messages', default_value='true'),
+        DeclareLaunchArgument(
+            'discard_old_messages',
+            default_value='true',
+            choices=['true', 'false'],
+        ),
         DeclareLaunchArgument('discard_msg_older_than_ms', default_value='1000'),
-        DeclareLaunchArgument('enable_dnn_depth_in_realsense', default_value='false'),
+        DeclareLaunchArgument(
+            'enable_dnn_depth_in_realsense',
+            default_value='false',
+            choices=['true', 'false'],
+        ),
         DeclareLaunchArgument('tf_frame_name', default_value='detected_object1'),
     ]
 
@@ -92,6 +100,26 @@ def generate_launch_description():
             'scan_foundationpose_depth_topic', LaunchConfiguration('foundationpose_depth_topic')),
         SetLaunchConfiguration('scan_input_qos', LaunchConfiguration('input_qos')),
         SetLaunchConfiguration('scan_output_qos', LaunchConfiguration('output_qos')),
+        SetLaunchConfiguration(
+            'scan_discard_old_messages',
+            PythonExpression(
+                [
+                    "'True' if '",
+                    LaunchConfiguration('discard_old_messages'),
+                    "'.lower() == 'true' else 'False'",
+                ]
+            ),
+        ),
+        SetLaunchConfiguration(
+            'scan_enable_dnn_depth_in_realsense',
+            PythonExpression(
+                [
+                    "'True' if '",
+                    LaunchConfiguration('enable_dnn_depth_in_realsense'),
+                    "'.lower() == 'true' else 'False'",
+                ]
+            ),
+        ),
     ]
 
     # Standalone component container matching MANIPULATOR_CONTAINER_NAME.
@@ -160,9 +188,10 @@ def generate_launch_description():
             'symmetry_axes': LaunchConfiguration('symmetry_axes'),
             'tf_frame_name': LaunchConfiguration('tf_frame_name'),
             'foundationpose_sensor_qos_config': LaunchConfiguration('scan_input_qos'),
-            'discard_old_messages': LaunchConfiguration('discard_old_messages'),
+            'discard_old_messages': LaunchConfiguration('scan_discard_old_messages'),
             'discard_msg_older_than_ms': LaunchConfiguration('discard_msg_older_than_ms'),
-            'enable_dnn_depth_in_realsense': LaunchConfiguration('enable_dnn_depth_in_realsense'),
+            'enable_dnn_depth_in_realsense':
+                LaunchConfiguration('scan_enable_dnn_depth_in_realsense'),
         }.items(),
     )
 

@@ -1,6 +1,6 @@
 # isaac_manipulator_pose_server
 
-Service-first package for multi-instance FoundationPose use in bin scenes, outside the full pick-and-place orchestration workflow.
+Service-first package for same-model multi-instance FoundationPose use in bin scenes, outside the full pick-and-place orchestration workflow.
 
 ## What it does
 
@@ -38,6 +38,7 @@ Quick pre-check:
 
 ```bash
 ros2 pkg prefix isaac_manipulator_pose_server
+ros2 pkg prefix isaac_manipulator_server_interfaces
 ros2 pkg prefix isaac_manipulator_interfaces
 ros2 pkg prefix isaac_manipulator_bringup
 ros2 pkg prefix isaac_manipulator_servers
@@ -105,8 +106,11 @@ non-convert-metric mode:
 ```bash
 ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   camera_type:=ISAAC_SIM \
+  use_sim_time:=true \
   foundationpose_depth_topic:=/foundation_pose_server/depth
 ```
+
+When using `use_sim_time:=true` with rosbag playback, run `ros2 bag play --clock ...`.
 
 ## Config
 
@@ -120,6 +124,8 @@ Important fields:
 - `shared_mesh_file_path`: one `.obj` mesh used for all selected IDs
 - `object_frame_prefix`: outputs names like `bin_object_0`, `bin_object_1`, ...
 - `max_objects`: limit how many detections to process (`0` = all)
+
+For same-model scans, keep `target_class_ids` constrained to a single class id.
 
 ## Service semantics
 
