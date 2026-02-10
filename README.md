@@ -3,9 +3,10 @@
 Perception-centered extension package set for Isaac Manipulator.
 
 This repository focuses on one specific capability: robustly retrieving
-dynamic, same-model multi-instance 6D poses from a scene (for example, bin
-picking setups), and exposing them through a stable service interface that
-other systems can call on demand.
+dynamic multi-object 6D poses from a scene (for example, bin picking setups),
+with optional per-scan object selection when you want same-object-type
+multi-instance results, and exposing them through a stable service interface
+that other systems can call on demand.
 
 Top-level packages:
 
@@ -18,8 +19,8 @@ This repo provides:
 
 - A persistent scan server that can be triggered repeatedly.
 - A service API to rescan and return all currently detected object poses.
-- Same-model multi-instance aggregation logic on top of Isaac Manipulator
-  perception servers.
+- Multi-object aggregation logic on top of Isaac Manipulator perception
+  servers, with optional object-specific filtering per scan.
 - Launch files for perception-only bringup and scan server bringup.
 
 This repo intentionally does **not** provide:
@@ -112,8 +113,10 @@ source "$ISAAC_ROS_WS/install/setup.bash"
 
 ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
   isaac_manipulator_server_interfaces/srv/ScanBinObjects \
-  "{max_objects: 0, expected_count: 1, clear_objects_before_run: true, clear_objects_after_run: true}"
+  "{max_objects: 0, expected_count: 1, object_key: '', clear_objects_before_run: true, clear_objects_after_run: true}"
 ```
+
+Set `object_key` to a configured `pose_server.available_objects` entry for per-scan object selection.
 
 ### Optional checks
 

@@ -4,7 +4,7 @@
 <package format="3">
   <name>isaac_manipulator_pose_server</name>
   <version>0.1.0</version>
-  <description>Service package to compute poses for multiple instances of the same model in bin scenes using Isaac Manipulator perception servers.</description>
+  <description>Service package to compute multi-object poses in bin scenes using Isaac Manipulator perception servers, with optional per-scan object selection.</description>
   <maintainer email="pastoriomarco@gmail.com">Marco Pastorio</maintainer>
   <license>Apache-2.0</license>
 

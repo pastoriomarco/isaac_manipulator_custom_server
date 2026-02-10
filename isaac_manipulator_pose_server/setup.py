@@ -27,7 +27,7 @@ setup(
     zip_safe=True,
     maintainer='Marco Pastorio',
     maintainer_email='pastoriomarco@gmail.com',
-    description='Service package for same-model multi-instance FoundationPose pose extraction in bins.',
+    description='Service package for multi-object FoundationPose pose extraction in bins with optional per-scan object selection.',
     license='Apache-2.0',
     extras_require={
         'test': [

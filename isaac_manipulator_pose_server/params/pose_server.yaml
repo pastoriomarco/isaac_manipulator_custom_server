@@ -6,6 +6,14 @@ pose_server:
   # Must exist on disk and be readable by ObjectInfoServer.
   shared_mesh_file_path: ''
 
+  # Optional catalog for runtime object selection via ScanBinObjects.object_key.
+  # Each object key maps to exactly one class id and one mesh.
+  available_objects: {}
+  # available_objects:
+  #   soup_can:
+  #     class_id: '3'
+  #     mesh_file_path: '/absolute/path/to/soup_can.obj'
+
   # Frame names assigned per object: <object_frame_prefix>_<object_id>
   object_frame_prefix: 'bin_object'
 

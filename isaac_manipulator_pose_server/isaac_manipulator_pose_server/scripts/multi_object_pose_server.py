@@ -1,6 +1,7 @@
 import argparse
 import os
 import threading
+from typing import List, Optional, Tuple
 
 from ament_index_python.packages import get_package_share_directory
 from isaac_manipulator_pose_server.config import load_config
@@ -54,6 +55,19 @@ class MultiObjectPoseServer:
         self._executor = rclpy.executors.MultiThreadedExecutor()
         self._executor.add_node(self._node)
 
+    def _resolve_object_selection(self, object_key: str) -> Tuple[Optional[List[str]], Optional[str]]:
+        if not object_key:
+            return None, None
+
+        object_profile = self._config.available_objects.get(object_key)
+        if object_profile is None:
+            available = ', '.join(sorted(self._config.available_objects.keys())) or '<none>'
+            raise RuntimeError(
+                f'Unknown object_key "{object_key}". Available object keys: {available}.'
+            )
+
+        return [object_profile.class_id], object_profile.mesh_file_path
+
     def _handle_scan_bin_objects(
         self,
         request: ScanBinObjects.Request,
@@ -69,8 +83,13 @@ class MultiObjectPoseServer:
             if max_objects < 0:
                 max_objects = int(self._config.max_objects)
 
+            object_key = str(request.object_key).strip()
+            selected_class_ids, selected_mesh_file_path = self._resolve_object_selection(object_key)
+
             run_config = ScanRunConfig(
                 max_objects=max_objects,
+                target_class_ids=selected_class_ids,
+                shared_mesh_file_path=selected_mesh_file_path,
                 clear_objects_before_run=bool(request.clear_objects_before_run),
                 clear_objects_after_run=bool(request.clear_objects_after_run),
             )
@@ -103,6 +122,8 @@ class MultiObjectPoseServer:
                 if expected_count_met else
                 f'Scan complete but expected_count={expected_count} was not met (found {count}).'
             )
+            if object_key:
+                response.message = f'{response.message} object_key={object_key}.'
             response.output_frame_id = output_frame_id
             response.count = count
             response.expected_count = expected_count

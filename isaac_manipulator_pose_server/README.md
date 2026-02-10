@@ -1,18 +1,19 @@
 # isaac_manipulator_pose_server
 
-Service-first package for same-model multi-instance FoundationPose use in bin scenes, outside the full pick-and-place orchestration workflow.
+Service-first package for multi-object FoundationPose use in bin scenes, with optional same-object-type per-scan selection, outside the full pick-and-place orchestration workflow.
 
 ## What it does
 
 The scan pipeline executes this sequence:
 
 1. `GetObjects` (`/get_objects`)
-2. Optional class-id filtering (`target_class_ids`)
-3. Optional shared mesh assignment for all selected objects (`/add_mesh_to_object`)
-4. Per-object TF frame naming (`/assign_name_to_object`)
-5. Per-object pose estimation (`/get_object_pose`)
-6. Optional cache clear (`/clear_objects`)
-7. Publish:
+1. Optional per-scan object selection (`object_key`) from `available_objects`
+1. Optional class-id filtering (`target_class_ids`)
+1. Optional shared mesh assignment for all selected objects (`/add_mesh_to_object`)
+1. Per-object TF frame naming (`/assign_name_to_object`)
+1. Per-object pose estimation (`/get_object_pose`)
+1. Optional cache clear (`/clear_objects`)
+1. Publish:
    - `geometry_msgs/PoseArray` on `/isaac_manipulator_pose_server/object_poses`
    - JSON summary on `/isaac_manipulator_pose_server/object_pose_summary`
 
@@ -61,7 +62,7 @@ Trigger a scan:
 ```bash
 ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
   isaac_manipulator_server_interfaces/srv/ScanBinObjects \
-  "{max_objects: 0, expected_count: 0, clear_objects_before_run: false, clear_objects_after_run: true}"
+  "{max_objects: 0, expected_count: 0, object_key: '', clear_objects_before_run: false, clear_objects_after_run: true}"
 ```
 
 Read last result (without rescanning):
@@ -122,10 +123,28 @@ Important fields:
 
 - `target_class_ids`: e.g. `['3']` for soup can only (empty means all)
 - `shared_mesh_file_path`: one `.obj` mesh used for all selected IDs
+- `available_objects`: object-key catalog used by per-scan `object_key` selection
 - `object_frame_prefix`: outputs names like `bin_object_0`, `bin_object_1`, ...
 - `max_objects`: limit how many detections to process (`0` = all)
 
-For same-model scans, keep `target_class_ids` constrained to a single class id.
+For multi-object scans across detected classes, leave `object_key` empty and keep
+`target_class_ids` empty.
+
+For same-object-type scans without `object_key`, keep `target_class_ids`
+constrained to a single class id.
+
+Example object catalog:
+
+```yaml
+pose_server:
+  available_objects:
+    soup_can:
+      class_id: '3'
+      mesh_file_path: '/absolute/path/to/soup_can.obj'
+    tuna_can:
+      class_id: '8'
+      mesh_file_path: '/absolute/path/to/tuna_can.obj'
+```
 
 ## Service semantics
 
@@ -133,5 +152,14 @@ For same-model scans, keep `target_class_ids` constrained to a single class id.
 
 - `max_objects`: `0` means all, `< 0` means use YAML-configured default.
 - `expected_count`: if `> 0`, response sets `expected_count_met` and returns `success=false` when unmet.
+- `object_key`: optional key from `pose_server.available_objects`; overrides class filter and mesh for this scan.
 - `clear_objects_before_run`: clear object cache before scanning.
 - `clear_objects_after_run`: clear object cache after scanning.
+
+Example selecting an object profile per scan:
+
+```bash
+ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
+  isaac_manipulator_server_interfaces/srv/ScanBinObjects \
+  "{max_objects: 0, expected_count: 0, object_key: 'soup_can', clear_objects_before_run: true, clear_objects_after_run: true}"
+```

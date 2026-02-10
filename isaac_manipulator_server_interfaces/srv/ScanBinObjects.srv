@@ -1,8 +1,10 @@
 # Trigger a fresh scan of the bin and estimate object poses.
 # max_objects: 0 means all detected objects. negative means use configured default.
 # expected_count: 0 disables count validation.
+# object_key: optional key from pose_server.available_objects for per-scan object selection.
 int32 max_objects
 int32 expected_count
+string object_key
 bool clear_objects_before_run
 bool clear_objects_after_run
 ---

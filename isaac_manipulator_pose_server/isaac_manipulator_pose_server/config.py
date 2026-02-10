@@ -6,9 +6,16 @@ import yaml
 
 
 @dataclass(frozen=True)
+class ObjectProfile:
+    class_id: str
+    mesh_file_path: str
+
+
+@dataclass(frozen=True)
 class WorkflowConfig:
     target_class_ids: List[str]
     shared_mesh_file_path: str
+    available_objects: Dict[str, ObjectProfile]
     object_frame_prefix: str
     max_objects: int
     get_objects_action_name: str
@@ -26,6 +33,7 @@ class WorkflowConfig:
 _DEFAULT_CONFIG: Dict[str, Any] = {
     'target_class_ids': [],
     'shared_mesh_file_path': '',
+    'available_objects': {},
     'object_frame_prefix': 'bin_object',
     'max_objects': 0,
     'get_objects_action_name': '/get_objects',
@@ -65,10 +73,45 @@ def load_config(config_file: str) -> WorkflowConfig:
     merged_config.update(loaded_config)
 
     target_class_ids = [str(class_id) for class_id in merged_config['target_class_ids']]
+    available_objects_raw = merged_config.get('available_objects')
+    if available_objects_raw is None:
+        # Backward compatibility for pre-rename configs.
+        available_objects_raw = merged_config.get('available_models') or {}
+    if not isinstance(available_objects_raw, dict):
+        raise ValueError(
+            f'Invalid "available_objects" format in {config_path}. '
+            'Expected a dictionary mapping object keys to object profile dictionaries.'
+        )
+
+    available_objects: Dict[str, ObjectProfile] = {}
+    for object_key, object_profile in available_objects_raw.items():
+        if not isinstance(object_profile, dict):
+            raise ValueError(
+                f'Invalid object profile for key "{object_key}" in {config_path}. '
+                'Expected a dictionary.'
+            )
+        class_id = str(object_profile.get('class_id', '')).strip()
+        mesh_file_path = str(object_profile.get('mesh_file_path', '')).strip()
+        if not class_id:
+            raise ValueError(
+                f'Invalid object profile for key "{object_key}" in {config_path}: '
+                '"class_id" is required.'
+            )
+        if not mesh_file_path:
+            raise ValueError(
+                f'Invalid object profile for key "{object_key}" in {config_path}: '
+                '"mesh_file_path" is required.'
+            )
+
+        available_objects[str(object_key)] = ObjectProfile(
+            class_id=class_id,
+            mesh_file_path=mesh_file_path,
+        )
 
     return WorkflowConfig(
         target_class_ids=target_class_ids,
         shared_mesh_file_path=str(merged_config['shared_mesh_file_path']),
+        available_objects=available_objects,
         object_frame_prefix=str(merged_config['object_frame_prefix']),
         max_objects=int(merged_config['max_objects']),
         get_objects_action_name=str(merged_config['get_objects_action_name']),

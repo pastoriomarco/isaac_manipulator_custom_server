@@ -13,7 +13,7 @@ Accepted.
 This repository adds a perception-centered capability on top of Isaac Manipulator:
 
 - triggerable bin rescans
-- same-model multi-instance 6D pose extraction
+- multi-object 6D pose extraction with optional same-object-type per-scan selection
 - persistent service endpoint (server does not exit after one run)
 - normalized result payload for downstream consumers (e.g. task planners, BT frameworks, custom executors)
 
@@ -54,7 +54,8 @@ Public services and output topics use `/isaac_manipulator_pose_server/*`.
 
 1. Optional `ClearObjects` before run (controlled by request flag).
 1. `GetObjects` action call.
-1. Filter by configured `target_class_ids` (if set).
+1. Optional per-scan object selection from configured `available_objects` (`ScanBinObjects.object_key`).
+1. Filter by configured `target_class_ids` (if set or when no `object_key` override is provided).
 1. Optional shared mesh assignment (`AddMeshToObject`) for selected objects.
 1. Per-object frame naming (`AssignNameToObject`).
 1. Per-object pose request (`GetObjectPose`).
@@ -73,7 +74,7 @@ Failures are fail-fast with explicit error messages including action/service and
 - Keeps custom code focused on orchestration and API packaging.
 - Reduces divergence from upstream and maintenance cost.
 
-### Persistent Server Model
+### Persistent Server Pattern
 
 - Better fit for external orchestrators (BTs, task-level planners, APIs) that need repeated rescans.
 - Avoids launch/teardown overhead and one-shot behavior.
@@ -113,7 +114,7 @@ Three launch modes are provided:
 - `perception_scan_server.launch.py` snapshots user inputs into dedicated launch configs (`scan_*`) to avoid nested include argument collisions.
 - QoS is configurable (`input_qos`, `output_qos`) to match live sensors vs rosbag playback scenarios.
 
-## Configuration Model
+## Configuration Scheme
 
 Runtime configuration expects a `pose_server` YAML root section.
 For compatibility, top-level key-value YAML is also accepted.
@@ -122,6 +123,7 @@ Key fields:
 
 - filtering: `target_class_ids`
 - mesh behavior: `shared_mesh_file_path`
+- object catalog: `available_objects` (for request-time `object_key` selection)
 - naming: `object_frame_prefix`
 - object limits: `max_objects`
 - endpoint names: action/service names (for custom remaps)
@@ -133,6 +135,12 @@ Request-level overrides:
 - `ScanBinObjects.max_objects`
   - `0`: all
   - `< 0`: fallback to configured YAML default
+- `ScanBinObjects.object_key`
+  - empty string: use YAML defaults (`target_class_ids`, `shared_mesh_file_path`)
+  - non-empty: select configured object profile (`class_id`, `mesh_file_path`) for this scan
+- Combined behavior
+  - empty `object_key` + empty `target_class_ids`: run as multi-object scan across detected classes
+  - non-empty `object_key`: target one configured object type for same-object-type multi-instance scans
 - `ScanBinObjects.clear_objects_before_run`: controls cache clear before scan
 - `ScanBinObjects.clear_objects_after_run`: controls cache clear after scan
 - `expected_count`
@@ -145,7 +153,7 @@ Request-level overrides:
 1. Consume response payload directly, or consume published `PoseArray`/summary topics.
 1. Use `/isaac_manipulator_pose_server/get_last_scan` when a cached result is sufficient.
 
-This design is intended for systems that need dynamic same-model multi-instance poses on demand, not only at startup.
+This design is intended for systems that need dynamic multi-object poses on demand, with optional same-object-type per-scan targeting, not only at startup.
 
 ## Consequences
 

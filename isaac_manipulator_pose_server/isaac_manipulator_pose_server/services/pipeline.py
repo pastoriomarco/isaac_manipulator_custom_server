@@ -19,6 +19,8 @@ from isaac_manipulator_pose_server.config import WorkflowConfig
 @dataclass
 class ScanRunConfig:
     max_objects: int
+    target_class_ids: Optional[List[str]]
+    shared_mesh_file_path: Optional[str]
     clear_objects_before_run: bool
     clear_objects_after_run: bool
 
@@ -86,11 +88,25 @@ class BinObjectPosePipeline:
         if not detected_objects:
             raise RuntimeError('GetObjects returned no detections.')
 
-        selected_records = self._select_objects(detected_objects, run_config.max_objects)
+        effective_target_class_ids = (
+            run_config.target_class_ids
+            if run_config.target_class_ids is not None
+            else self._config.target_class_ids
+        )
+        selected_records = self._select_objects(
+            detected_objects,
+            run_config.max_objects,
+            effective_target_class_ids,
+        )
         if not selected_records:
             raise RuntimeError('No objects left after applying class-id filter.')
 
-        if self._config.shared_mesh_file_path:
+        effective_shared_mesh_file_path = (
+            run_config.shared_mesh_file_path
+            if run_config.shared_mesh_file_path is not None
+            else self._config.shared_mesh_file_path
+        )
+        if effective_shared_mesh_file_path:
             self._wait_for_service(
                 self._add_mesh_client,
                 self._config.add_mesh_service_name,
@@ -99,7 +115,7 @@ class BinObjectPosePipeline:
             add_mesh_request = AddMeshToObject.Request()
             add_mesh_request.object_ids = [record['object_id'] for record in selected_records]
             add_mesh_request.mesh_file_paths = [
-                self._config.shared_mesh_file_path for _ in selected_records
+                effective_shared_mesh_file_path for _ in selected_records
             ]
             add_mesh_response = self._call_service_and_wait_response(
                 client=self._add_mesh_client,
@@ -152,8 +168,13 @@ class BinObjectPosePipeline:
 
         return selected_records
 
-    def _select_objects(self, detected_objects: List[ObjectInfo], max_objects: int) -> List[Dict]:
-        target_class_ids = {str(class_id) for class_id in self._config.target_class_ids}
+    def _select_objects(
+        self,
+        detected_objects: List[ObjectInfo],
+        max_objects: int,
+        target_class_ids_filter: List[str],
+    ) -> List[Dict]:
+        target_class_ids = {str(class_id) for class_id in target_class_ids_filter}
         selected_records = []
 
         for detected_object in detected_objects:
