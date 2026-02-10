@@ -24,6 +24,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('camera_type', default_value='REALSENSE'),
         DeclareLaunchArgument(
+            'use_sim_time',
+            default_value='false',
+            choices=['true', 'false'],
+            description='Whether to use simulation time for included pipelines.',
+        ),
+        DeclareLaunchArgument(
             'foundationpose_depth_topic',
             default_value='/foundation_pose_server/depth_metric',
             description=(
@@ -119,6 +125,7 @@ def generate_launch_description():
             'dropped_fps': LaunchConfiguration('dropped_fps'),
             'input_qos': LaunchConfiguration('scan_input_qos'),
             'output_qos': LaunchConfiguration('scan_output_qos'),
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
             'foundationpose_server_input_camera_info_topic': '/foundation_pose_server/camera_info',
         }.items(),
     )
