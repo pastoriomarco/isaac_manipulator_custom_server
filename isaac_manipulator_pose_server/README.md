@@ -163,3 +163,11 @@ ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
   isaac_manipulator_server_interfaces/srv/ScanBinObjects \
   "{max_objects: 0, expected_count: 0, object_key: 'soup_can', clear_objects_before_run: true, clear_objects_after_run: true}"
 ```
+
+Example targeting `mustard` (when `available_objects.mustard` is configured):
+
+```bash
+ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
+  isaac_manipulator_server_interfaces/srv/ScanBinObjects \
+  "{max_objects: 0, expected_count: 1, object_key: 'mustard', clear_objects_before_run: true, clear_objects_after_run: true}"
+```

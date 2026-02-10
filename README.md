@@ -118,6 +118,14 @@ ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
 
 Set `object_key` to a configured `pose_server.available_objects` entry for per-scan object selection.
 
+Example selecting `mustard`:
+
+```bash
+ros2 service call /isaac_manipulator_pose_server/scan_bin_objects \
+  isaac_manipulator_server_interfaces/srv/ScanBinObjects \
+  "{max_objects: 0, expected_count: 1, object_key: 'mustard', clear_objects_before_run: true, clear_objects_after_run: true}"
+```
+
 ### Optional checks
 
 ```bash

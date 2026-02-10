@@ -1,6 +1,10 @@
 pose_server:
-  # Leave empty to accept any detected class id.
+  # Default class filter used when ScanBinObjects.object_key is empty.
+  # Keep this empty when you want to always select the object class at request time
+  # with ScanBinObjects.object_key.
   target_class_ids: []
+  # Example fixed default filter (without object_key):
+  # target_class_ids: ['22']
 
   # Shared mesh used for all selected objects.
   # Must exist on disk and be readable by ObjectInfoServer.
@@ -8,11 +12,29 @@ pose_server:
 
   # Optional catalog for runtime object selection via ScanBinObjects.object_key.
   # Each object key maps to exactly one class id and one mesh.
-  available_objects: {}
+  available_objects:
+    soup_can:
+      class_id: '3'
+      mesh_file_path: '/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj'
+    mac_and_cheese:
+      class_id: '22'
+      mesh_file_path: '/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_foundationpose/Mac_and_cheese_0_1/Mac_and_cheese_0_1.obj'
+    mustard:
+      class_id: '4'
+      mesh_file_path: '/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_foundationpose/Mustard/textured_simple.obj'
+    # NOTE: `dock` is from the non-grasp (AMR) SyntheticaDETR model family.
+    # If you use a different RT-DETR model, update this class id to your model output.
+    dock:
+      class_id: '0'
+      mesh_file_path: '/workspaces/isaac_ros-dev/isaac_ros_assets/isaac_ros_foundationpose/dock/dock.obj'
+  # Add all selectable object profiles here for runtime object_key selection:
   # available_objects:
   #   soup_can:
-  #     class_id: '3'
+  #     class_id: '22'
   #     mesh_file_path: '/absolute/path/to/soup_can.obj'
+  #   class_4_object:
+  #     class_id: '4'
+  #     mesh_file_path: '/absolute/path/to/class_4_object.obj'
 
   # Frame names assigned per object: <object_frame_prefix>_<object_id>
   object_frame_prefix: 'bin_object'
