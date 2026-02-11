@@ -1,18 +1,41 @@
 import os
 
-from ament_index_python.packages import get_package_share_directory
+from ament_index_python.packages import PackageNotFoundError, get_package_share_directory
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetLaunchConfiguration
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    OpaqueFunction,
+    SetLaunchConfiguration,
+)
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import Node
+from launch_ros.actions import LoadComposableNodes, Node
+from launch_ros.descriptions import ComposableNode
+
+
+def _validate_detector_setup(context, *, has_yolov8_package: bool):
+    detector = context.perform_substitution(LaunchConfiguration('object_detection_model'))
+    if detector == 'YOLOV8' and not has_yolov8_package:
+        raise RuntimeError(
+            'object_detection_model=YOLOV8 requires package "isaac_ros_custom_bringup" '
+            '(with launch/yolov8_inference.launch.py) to be available in the sourced workspace.'
+        )
+    return []
 
 
 def generate_launch_description():
     custom_share = get_package_share_directory('isaac_manipulator_pose_server')
     bringup_share = get_package_share_directory('isaac_manipulator_bringup')
     servers_share = get_package_share_directory('isaac_manipulator_servers')
+    has_yolov8_package = True
+    try:
+        yolo_bringup_share = get_package_share_directory('isaac_ros_custom_bringup')
+    except PackageNotFoundError:
+        yolo_bringup_share = ''
+        has_yolov8_package = False
 
     default_config = os.path.join(custom_share, 'params', 'pose_server.yaml')
 
@@ -52,9 +75,26 @@ def generate_launch_description():
         DeclareLaunchArgument('rgb_image_height', default_value='720'),
         DeclareLaunchArgument('depth_image_width', default_value='1280'),
         DeclareLaunchArgument('depth_image_height', default_value='720'),
+        DeclareLaunchArgument(
+            'object_detection_model',
+            default_value='RT_DETR',
+            choices=['RT_DETR', 'YOLOV8'],
+            description='Object detector frontend used for GetObjects (RT_DETR or YOLOV8).',
+        ),
         DeclareLaunchArgument('rtdetr_engine_file_path', default_value='/tmp/rtdetr.plan'),
         DeclareLaunchArgument('rt_detr_confidence_threshold', default_value='0.7'),
         DeclareLaunchArgument('object_class_id', default_value='22'),
+        DeclareLaunchArgument('yolov8_model_file_path', default_value='/tmp/yolov8.onnx'),
+        DeclareLaunchArgument('yolov8_engine_file_path', default_value='/tmp/yolov8.plan'),
+        DeclareLaunchArgument('yolov8_input_tensor_names', default_value='["input_tensor"]'),
+        DeclareLaunchArgument('yolov8_input_binding_names', default_value='["images"]'),
+        DeclareLaunchArgument('yolov8_output_tensor_names', default_value='["output_tensor"]'),
+        DeclareLaunchArgument('yolov8_output_binding_names', default_value='["output0"]'),
+        DeclareLaunchArgument('yolov8_confidence_threshold', default_value='0.25'),
+        DeclareLaunchArgument('yolov8_nms_threshold', default_value='0.45'),
+        DeclareLaunchArgument('yolov8_num_classes', default_value='80'),
+        DeclareLaunchArgument('yolov8_network_image_width', default_value='640'),
+        DeclareLaunchArgument('yolov8_network_image_height', default_value='640'),
         DeclareLaunchArgument('input_fps', default_value='30'),
         DeclareLaunchArgument('dropped_fps', default_value='28'),
         DeclareLaunchArgument('input_qos', default_value='SENSOR_DATA'),
@@ -121,6 +161,20 @@ def generate_launch_description():
             ),
         ),
     ]
+    detector_is_rtdetr = IfCondition(
+        PythonExpression(
+            ["'", LaunchConfiguration('object_detection_model'), "' == 'RT_DETR'"]
+        )
+    )
+    detector_is_yolov8 = IfCondition(
+        PythonExpression(
+            ["'", LaunchConfiguration('object_detection_model'), "' == 'YOLOV8'"]
+        )
+    )
+    validate_detector_setup = OpaqueFunction(
+        function=_validate_detector_setup,
+        kwargs={'has_yolov8_package': has_yolov8_package},
+    )
 
     # Standalone component container matching MANIPULATOR_CONTAINER_NAME.
     manipulator_container = Node(
@@ -156,6 +210,80 @@ def generate_launch_description():
             'use_sim_time': LaunchConfiguration('use_sim_time'),
             'foundationpose_server_input_camera_info_topic': '/foundation_pose_server/camera_info',
         }.items(),
+        condition=detector_is_rtdetr,
+    )
+
+    # YOLOv8 detector pipeline from local custom bringup package.
+    yolov8_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(yolo_bringup_share, 'launch', 'yolov8_inference.launch.py')
+        ),
+        launch_arguments={
+            'model_file_path': LaunchConfiguration('yolov8_model_file_path'),
+            'engine_file_path': LaunchConfiguration('yolov8_engine_file_path'),
+            'input_tensor_names': LaunchConfiguration('yolov8_input_tensor_names'),
+            'input_binding_names': LaunchConfiguration('yolov8_input_binding_names'),
+            'output_tensor_names': LaunchConfiguration('yolov8_output_tensor_names'),
+            'output_binding_names': LaunchConfiguration('yolov8_output_binding_names'),
+            'confidence_threshold': LaunchConfiguration('yolov8_confidence_threshold'),
+            'nms_threshold': LaunchConfiguration('yolov8_nms_threshold'),
+            'num_classes': LaunchConfiguration('yolov8_num_classes'),
+            'network_image_width': LaunchConfiguration('yolov8_network_image_width'),
+            'network_image_height': LaunchConfiguration('yolov8_network_image_height'),
+            'image_input_topic': LaunchConfiguration('scan_rgb_image_topic'),
+            'camera_info_input_topic': LaunchConfiguration('scan_rgb_camera_info_topic'),
+        }.items(),
+        condition=detector_is_yolov8,
+    )
+
+    # For YOLOv8 mode, build FoundationPose masks from the per-request bbox emitted by
+    # foundation_pose_server (/foundation_pose_server/bbox), analogous to RT-DETR ROI mode.
+    yolov8_detection2d_to_mask_node = ComposableNode(
+        name='yolov8_detection2_d_to_mask',
+        package='isaac_ros_foundationpose',
+        plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
+        parameters=[{
+            'mask_width': LaunchConfiguration('scan_rgb_image_width'),
+            'mask_height': LaunchConfiguration('scan_rgb_image_height'),
+            'input_qos': LaunchConfiguration('scan_output_qos'),
+            'output_qos': LaunchConfiguration('scan_output_qos'),
+        }],
+        remappings=[
+            ('detection2_d', '/foundation_pose_server/bbox'),
+            ('segmentation', 'yolov8_segmentation_rgb'),
+        ],
+    )
+    yolov8_resize_mask_node = ComposableNode(
+        name='yolov8_resize_mask_node',
+        package='isaac_ros_image_proc',
+        plugin='nvidia::isaac_ros::image_proc::ResizeNode',
+        parameters=[{
+            'input_width': LaunchConfiguration('scan_rgb_image_width'),
+            'input_height': LaunchConfiguration('scan_rgb_image_height'),
+            'output_width': LaunchConfiguration('scan_depth_image_width'),
+            'output_height': LaunchConfiguration('scan_depth_image_height'),
+            'keep_aspect_ratio': False,
+            'disable_padding': False,
+            'encoding_desired': 'mono8',
+            'input_qos': LaunchConfiguration('scan_output_qos'),
+            'output_qos': LaunchConfiguration('scan_output_qos'),
+            'use_latest_camera_info': True,
+            'drop_old_messages': False,
+        }],
+        remappings=[
+            ('image', 'yolov8_segmentation_rgb'),
+            ('camera_info', '/foundation_pose_server/camera_info'),
+            ('resize/image', 'segmentation'),
+            ('resize/camera_info', 'camera_info_segmentation'),
+        ],
+    )
+    yolov8_mask_nodes = LoadComposableNodes(
+        target_container='manipulator_container',
+        composable_node_descriptions=[
+            yolov8_detection2d_to_mask_node,
+            yolov8_resize_mask_node,
+        ],
+        condition=detector_is_yolov8,
     )
 
     # FoundationPose DNN node pipeline.
@@ -240,6 +368,8 @@ def generate_launch_description():
         ),
         launch_arguments={
             'standalone': 'false',
+            # Keep backend value RT_DETR for DetectObjects-action-compatible detectors
+            # (RT-DETR and YOLOv8 both route through object_detection_server).
             'object_detection_backend': 'RT_DETR',
             'pose_estimation_backend': 'FOUNDATION_POSE',
             'segmentation_backend': 'NONE',
@@ -257,8 +387,11 @@ def generate_launch_description():
     return LaunchDescription([
         *launch_args,
         *capture_inputs,
+        validate_detector_setup,
         manipulator_container,
         rtdetr_launch,
+        yolov8_launch,
+        yolov8_mask_nodes,
         foundationpose_launch,
         object_detection_server_launch,
         foundation_pose_server_launch,

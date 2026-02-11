@@ -90,7 +90,7 @@ ros2 launch isaac_manipulator_pose_server scan_server_with_pipeline.launch.py \
 
 This launch starts a perception-only stack required by this package:
 
-- RT-DETR perception pipeline
+- Selectable object detector (`RT_DETR` or `YOLOV8`)
 - FoundationPose node
 - Object detection/foundation pose/object info servers
 - `multi_object_pose_server`
@@ -99,6 +99,46 @@ It does not launch UR driver, MoveIt, cuMotion, or nvblox.
 
 ```bash
 ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py
+```
+
+Detector selection is launch-time configurable:
+
+- `object_detection_model:=RT_DETR` (default)
+- `object_detection_model:=YOLOV8`
+
+Example with YOLOv8 detector frontend:
+
+```bash
+ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
+  camera_type:=ISAAC_SIM \
+  use_sim_time:=true \
+  foundationpose_depth_topic:=/foundation_pose_server/depth \
+  rgb_image_topic:=/image_rect \
+  rgb_camera_info_topic:=/camera_info_rect \
+  depth_image_topic:=/depth \
+  depth_camera_info_topic:=/camera_info_rect \
+  rgb_image_width:=640 rgb_image_height:=480 \
+  depth_image_width:=640 depth_image_height:=480 \
+  input_qos:=DEFAULT output_qos:=DEFAULT \
+  input_fps:=8 dropped_fps:=8 \
+  object_detection_model:=YOLOV8 \
+  yolov8_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.onnx" \
+  yolov8_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.plan" \
+  yolov8_input_tensor_names:='["input_tensor"]' \
+  yolov8_input_binding_names:='["images"]' \
+  yolov8_output_tensor_names:='["output_tensor"]' \
+  yolov8_output_binding_names:='["output0"]' \
+  yolov8_confidence_threshold:=0.25 \
+  yolov8_nms_threshold:=0.45 \
+  yolov8_num_classes:=1 \
+  yolov8_network_image_width:=640 \
+  yolov8_network_image_height:=640 \
+  refine_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan" \
+  score_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_trt_engine.plan" \
+  refine_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_model.onnx" \
+  score_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_model.onnx" \
+  mesh_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj" \
+  texture_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/baked_mesh_tex0.png"
 ```
 
 For rosbags that already publish metric depth (`32FC1`), run FoundationPose in
