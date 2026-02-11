@@ -136,6 +136,27 @@ ros2 pkg prefix isaac_manipulator_servers
 If any of these fail, the launch files cannot start correctly until your
 workspace/dependencies are built and sourced.
 
+If using `object_detection_model:=YOLOV8`, also pre-check:
+
+```bash
+ros2 pkg prefix isaac_ros_custom_bringup
+ros2 pkg prefix isaac_ros_yolov8
+ros2 pkg prefix isaac_ros_dnn_image_encoder
+ros2 pkg prefix isaac_ros_tensor_rt
+ros2 pkg prefix isaac_ros_image_proc
+```
+
+If `isaac_ros_yolov8` / TensorRT encoder dependencies are missing, install the
+Quickstart binary packages:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+  ros-jazzy-isaac-ros-yolov8 \
+  ros-jazzy-isaac-ros-dnn-image-encoder \
+  ros-jazzy-isaac-ros-tensor-rt
+```
+
 ### Terminal 2: Play rosbag
 
 ```bash

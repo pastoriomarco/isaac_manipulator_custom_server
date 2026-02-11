@@ -16,13 +16,24 @@ from launch_ros.actions import LoadComposableNodes, Node
 from launch_ros.descriptions import ComposableNode
 
 
-def _validate_detector_setup(context, *, has_yolov8_package: bool):
+def _validate_detector_setup(
+        context,
+        *,
+        has_yolov8_bringup_package: bool,
+        missing_yolov8_runtime_packages):
     detector = context.perform_substitution(LaunchConfiguration('object_detection_model'))
-    if detector == 'YOLOV8' and not has_yolov8_package:
-        raise RuntimeError(
-            'object_detection_model=YOLOV8 requires package "isaac_ros_custom_bringup" '
-            '(with launch/yolov8_inference.launch.py) to be available in the sourced workspace.'
-        )
+    if detector == 'YOLOV8':
+        if not has_yolov8_bringup_package:
+            raise RuntimeError(
+                'object_detection_model=YOLOV8 requires package "isaac_ros_custom_bringup" '
+                '(with launch/yolov8_inference.launch.py) to be available in the sourced workspace.'
+            )
+        if missing_yolov8_runtime_packages:
+            missing = ', '.join(missing_yolov8_runtime_packages)
+            raise RuntimeError(
+                'object_detection_model=YOLOV8 is missing required runtime package(s): '
+                f'{missing}. Build/install them and source the workspace before launching.'
+            )
     return []
 
 
@@ -30,12 +41,25 @@ def generate_launch_description():
     custom_share = get_package_share_directory('isaac_manipulator_pose_server')
     bringup_share = get_package_share_directory('isaac_manipulator_bringup')
     servers_share = get_package_share_directory('isaac_manipulator_servers')
-    has_yolov8_package = True
+    has_yolov8_bringup_package = True
     try:
         yolo_bringup_share = get_package_share_directory('isaac_ros_custom_bringup')
     except PackageNotFoundError:
         yolo_bringup_share = ''
-        has_yolov8_package = False
+        has_yolov8_bringup_package = False
+
+    yolov8_runtime_packages = [
+        'isaac_ros_yolov8',
+        'isaac_ros_dnn_image_encoder',
+        'isaac_ros_tensor_rt',
+        'isaac_ros_image_proc',
+    ]
+    missing_yolov8_runtime_packages = []
+    for package_name in yolov8_runtime_packages:
+        try:
+            get_package_share_directory(package_name)
+        except PackageNotFoundError:
+            missing_yolov8_runtime_packages.append(package_name)
 
     default_config = os.path.join(custom_share, 'params', 'pose_server.yaml')
 
@@ -173,7 +197,10 @@ def generate_launch_description():
     )
     validate_detector_setup = OpaqueFunction(
         function=_validate_detector_setup,
-        kwargs={'has_yolov8_package': has_yolov8_package},
+        kwargs={
+            'has_yolov8_bringup_package': has_yolov8_bringup_package,
+            'missing_yolov8_runtime_packages': missing_yolov8_runtime_packages,
+        },
     )
 
     # Standalone component container matching MANIPULATOR_CONTAINER_NAME.
