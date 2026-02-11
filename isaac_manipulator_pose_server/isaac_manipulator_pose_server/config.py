@@ -24,6 +24,10 @@ class WorkflowConfig:
     assign_name_service_name: str
     clear_objects_service_name: str
     detect_objects_action_name: str
+    detection_source_mode: str
+    detections_topic_name: str
+    detections_topic_qos: str
+    detections_topic_stale_sec: float
     estimate_pose_action_name: str
     action_timeout_sec: float
     additional_pose_timeout_sec: float
@@ -54,6 +58,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'assign_name_service_name': '/assign_name_to_object',
     'clear_objects_service_name': '/clear_objects',
     'detect_objects_action_name': '/detect_objects',
+    'detection_source_mode': 'topic',
+    'detections_topic_name': '/detections_output',
+    'detections_topic_qos': 'SENSOR_DATA',
+    'detections_topic_stale_sec': 1.0,
     'estimate_pose_action_name': '/estimate_pose_foundation_pose',
     'action_timeout_sec': 45.0,
     'additional_pose_timeout_sec': 12.0,
@@ -104,6 +112,21 @@ def load_config(config_file: str) -> WorkflowConfig:
     merged_config = dict(_DEFAULT_CONFIG)
     merged_config.update(loaded_config)
 
+    detection_source_mode = str(merged_config['detection_source_mode']).strip().lower()
+    if detection_source_mode not in ('action', 'topic'):
+        raise ValueError(
+            f'Invalid "detection_source_mode" in {config_path}: '
+            f'"{merged_config["detection_source_mode"]}". Supported values: action, topic.'
+        )
+
+    detections_topic_qos = str(merged_config['detections_topic_qos']).strip().upper()
+    if detections_topic_qos not in ('DEFAULT', 'SENSOR_DATA'):
+        raise ValueError(
+            f'Invalid "detections_topic_qos" in {config_path}: '
+            f'"{merged_config["detections_topic_qos"]}". '
+            'Supported values: DEFAULT, SENSOR_DATA.'
+        )
+
     target_class_ids = [str(class_id) for class_id in merged_config['target_class_ids']]
     available_objects_raw = merged_config.get('available_objects')
     if available_objects_raw is None:
@@ -152,6 +175,10 @@ def load_config(config_file: str) -> WorkflowConfig:
         assign_name_service_name=str(merged_config['assign_name_service_name']),
         clear_objects_service_name=str(merged_config['clear_objects_service_name']),
         detect_objects_action_name=str(merged_config['detect_objects_action_name']),
+        detection_source_mode=detection_source_mode,
+        detections_topic_name=str(merged_config['detections_topic_name']),
+        detections_topic_qos=detections_topic_qos,
+        detections_topic_stale_sec=max(0.0, float(merged_config['detections_topic_stale_sec'])),
         estimate_pose_action_name=str(merged_config['estimate_pose_action_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         additional_pose_timeout_sec=max(0.1, float(merged_config['additional_pose_timeout_sec'])),

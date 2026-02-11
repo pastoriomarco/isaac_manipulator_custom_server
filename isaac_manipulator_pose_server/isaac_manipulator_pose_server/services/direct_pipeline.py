@@ -1,4 +1,5 @@
 import json
+import threading
 import time
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -9,15 +10,16 @@ from isaac_manipulator_interfaces.srv import ClearObjects
 import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, qos_profile_sensor_data
 from std_msgs.msg import String
-from vision_msgs.msg import Detection2D
+from vision_msgs.msg import Detection2D, Detection2DArray
 
 from isaac_manipulator_pose_server.config import WorkflowConfig
 from isaac_manipulator_pose_server.services.pipeline import ScanResult, ScanRunConfig
 
 
 class DirectBinObjectPosePipeline:
-    """Direct pipeline that uses detect_objects + estimate_pose_foundation_pose actions."""
+    """Direct pipeline that uses detector topic/action + estimate_pose_foundation_pose action."""
 
     def __init__(self, node: Node, config: WorkflowConfig):
         self._node = node
@@ -25,12 +27,21 @@ class DirectBinObjectPosePipeline:
         self._clear_objects_service_available = True
         self._clear_objects_service_warned_unavailable = False
         self._bbox_memory: List[Dict[str, Any]] = []
+        self._detections_cv = threading.Condition()
+        self._latest_detections_msg: Optional[Detection2DArray] = None
+        self._latest_detections_monotonic_sec: float = 0.0
         self._detect_objects_client = ActionClient(
             self._node, DetectObjects, self._config.detect_objects_action_name)
         self._estimate_pose_client = ActionClient(
             self._node, EstimatePoseFoundationPose, self._config.estimate_pose_action_name)
         self._clear_objects_client = self._node.create_client(
             ClearObjects, self._config.clear_objects_service_name)
+        self._detections_sub = self._node.create_subscription(
+            Detection2DArray,
+            self._config.detections_topic_name,
+            self._detections_topic_callback,
+            self._resolve_detection_topic_qos(self._config.detections_topic_qos),
+        )
 
         self._pose_array_pub = self._node.create_publisher(
             PoseArray, self._config.output_pose_array_topic, 10)
@@ -84,14 +95,16 @@ class DirectBinObjectPosePipeline:
         self._log_state(
             'MODE',
             f'one_pose_per_detection_round={single_shot_mode}, '
-            f'max_detection_rounds={detection_round_limit}.'
+            f'max_detection_rounds={detection_round_limit}, '
+            f'detection_source_mode={self._config.detection_source_mode}.'
         )
 
-        self._wait_for_action_server(
-            self._detect_objects_client,
-            self._config.detect_objects_action_name,
-            self._config.action_timeout_sec
-        )
+        if self._config.detection_source_mode == 'action':
+            self._wait_for_action_server(
+                self._detect_objects_client,
+                self._config.detect_objects_action_name,
+                self._config.action_timeout_sec
+            )
         self._wait_for_action_server(
             self._estimate_pose_client,
             self._config.estimate_pose_action_name,
@@ -102,18 +115,17 @@ class DirectBinObjectPosePipeline:
         attempted_records: List[Dict] = []
         pose_attempt_count = 0
         had_any_candidates = False
+        last_detection_receive_sec = 0.0
 
         for detection_round in range(1, detection_round_limit + 1):
             if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
                 break
 
-            detect_objects_result = self._send_action_goal_and_wait_result(
-                client=self._detect_objects_client,
-                goal=DetectObjects.Goal(),
+            detections, last_detection_receive_sec = self._acquire_detections(
+                detection_round=detection_round,
                 timeout_sec=self._config.action_timeout_sec,
-                action_label=f'DetectObjects(round={detection_round})'
+                newer_than_sec=last_detection_receive_sec,
             )
-            detections = list(detect_objects_result.detections.detections)
             self._log_state(
                 'DETECTION',
                 f'Round {detection_round}: DetectObjects returned {len(detections)} detection(s).'
@@ -251,6 +263,78 @@ class DirectBinObjectPosePipeline:
             selected_records = selected_records[:max_objects]
 
         return selected_records
+
+    def _resolve_detection_topic_qos(self, qos_name: str):
+        if qos_name == 'SENSOR_DATA':
+            return qos_profile_sensor_data
+        return QoSProfile(depth=10)
+
+    def _detections_topic_callback(self, msg: Detection2DArray):
+        with self._detections_cv:
+            self._latest_detections_msg = msg
+            self._latest_detections_monotonic_sec = time.monotonic()
+            self._detections_cv.notify_all()
+
+    def _wait_for_detections_topic(
+        self,
+        *,
+        timeout_sec: float,
+        newer_than_sec: float,
+    ) -> Tuple[Detection2DArray, float]:
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok():
+            with self._detections_cv:
+                message = self._latest_detections_msg
+                receive_time_sec = self._latest_detections_monotonic_sec
+                if (
+                    message is not None and
+                    receive_time_sec > newer_than_sec and
+                    (
+                        self._config.detections_topic_stale_sec <= 0.0 or
+                        (time.monotonic() - receive_time_sec) <=
+                        self._config.detections_topic_stale_sec
+                    )
+                ):
+                    return message, receive_time_sec
+
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0:
+                    break
+                self._detections_cv.wait(timeout=min(0.05, remaining))
+
+        raise RuntimeError(
+            'Detections topic wait timed out '
+            f'after {timeout_sec:.1f} seconds on {self._config.detections_topic_name}.'
+        )
+
+    def _acquire_detections(
+        self,
+        *,
+        detection_round: int,
+        timeout_sec: float,
+        newer_than_sec: float,
+    ) -> Tuple[List[Detection2D], float]:
+        if self._config.detection_source_mode == 'topic':
+            detections_msg, receive_time_sec = self._wait_for_detections_topic(
+                timeout_sec=timeout_sec,
+                newer_than_sec=newer_than_sec,
+            )
+            age_sec = time.monotonic() - receive_time_sec
+            self._log_state(
+                'DETECTION_SOURCE',
+                f'Round {detection_round}: consumed topic data '
+                f'from {self._config.detections_topic_name} '
+                f'(age={age_sec:.3f}s).'
+            )
+            return list(detections_msg.detections), receive_time_sec
+
+        detect_objects_result = self._send_action_goal_and_wait_result(
+            client=self._detect_objects_client,
+            goal=DetectObjects.Goal(),
+            timeout_sec=timeout_sec,
+            action_label=f'DetectObjects(round={detection_round})'
+        )
+        return list(detect_objects_result.detections.detections), time.monotonic()
 
     def _filter_novel_candidates(
         self,

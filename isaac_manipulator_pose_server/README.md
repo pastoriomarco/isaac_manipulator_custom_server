@@ -15,7 +15,7 @@ This package supports two scan modes:
    1. Per-object pose estimation (`/get_object_pose`)
    1. Optional cache clear (`/clear_objects`)
 2. Direct mode (`multi_object_pose_server_direct`) without `object_info_server`:
-   1. `DetectObjects` (`/detect_objects`)
+   1. Detector stream (`/detections_output` by default) or `DetectObjects` (`/detect_objects`)
    1. Optional class-id filtering (`target_class_ids`) + class-aware NMS (`nms_iou_threshold`)
    1. Per-detection FoundationPose (`/estimate_pose_foundation_pose`) using `shared_mesh_file_path`
    1. Optional best-effort cache clear (`/clear_objects`)
@@ -42,7 +42,8 @@ For legacy mode (`multi_object_pose_server`), you need:
 
 For direct mode (`multi_object_pose_server_direct`), you need:
 
-- `/detect_objects` action server
+- detector output topic (default: `/detections_output`)
+- (optional) `/detect_objects` action server when `detection_source_mode: action`
 - `/estimate_pose_foundation_pose` action server
 - (optional) `/clear_objects` service
 
@@ -254,6 +255,10 @@ Important fields:
 - `object_frame_prefix`: outputs names like `bin_object_0`, `bin_object_1`, ...
 - `max_objects`: limit how many detections to process (`0` = all)
 - `detect_objects_action_name`: direct-mode detector action endpoint
+- `detection_source_mode`: `topic` (recommended) or `action` for direct mode detections
+- `detections_topic_name`: detector topic used in direct mode when `detection_source_mode: topic`
+- `detections_topic_qos`: `SENSOR_DATA` or `DEFAULT` for direct-mode detection subscription
+- `detections_topic_stale_sec`: max allowed detector-topic age in direct mode
 - `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
 - `action_retry_count`: retries for action waits/calls in direct mode
 - `estimate_pose_retry_count`: retries for each FoundationPose action in direct mode

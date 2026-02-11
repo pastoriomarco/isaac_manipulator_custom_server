@@ -51,6 +51,14 @@ pose_server:
   clear_objects_service_name: '/clear_objects'
   # Direct path (bypasses object_info_server):
   detect_objects_action_name: '/detect_objects'
+  # Direct-mode detection source:
+  # - topic: subscribe directly to detector output (avoids detect_objects input starvation)
+  # - action: call /detect_objects action
+  detection_source_mode: 'topic'
+  detections_topic_name: '/detections_output'
+  detections_topic_qos: 'SENSOR_DATA'
+  # Max acceptable age (seconds) for detector topic data in topic mode.
+  detections_topic_stale_sec: 1.0
   estimate_pose_action_name: '/estimate_pose_foundation_pose'
 
   # Timeouts (seconds).
