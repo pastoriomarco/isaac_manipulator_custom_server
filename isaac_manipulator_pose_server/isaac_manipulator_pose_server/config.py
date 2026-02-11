@@ -28,6 +28,9 @@ class WorkflowConfig:
     detections_topic_name: str
     detections_topic_qos: str
     detections_topic_stale_sec: float
+    detection_topic_wait_timeout_sec: float
+    detection_topic_fallback_to_action: bool
+    detection_action_fallback_timeout_sec: float
     estimate_pose_action_name: str
     action_timeout_sec: float
     additional_pose_timeout_sec: float
@@ -41,6 +44,7 @@ class WorkflowConfig:
     bbox_memory_ttl_sec: float
     max_detection_rounds_per_scan: int
     one_pose_per_detection_round: bool
+    max_pose_attempts_per_scan: int
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -62,9 +66,12 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'detections_topic_name': '/detections_output',
     'detections_topic_qos': 'SENSOR_DATA',
     'detections_topic_stale_sec': 1.0,
+    'detection_topic_wait_timeout_sec': 2.0,
+    'detection_topic_fallback_to_action': True,
+    'detection_action_fallback_timeout_sec': 6.0,
     'estimate_pose_action_name': '/estimate_pose_foundation_pose',
     'action_timeout_sec': 45.0,
-    'additional_pose_timeout_sec': 12.0,
+    'additional_pose_timeout_sec': 2.0,
     'service_timeout_sec': 10.0,
     'action_retry_count': 2,
     'estimate_pose_retry_count': 0,
@@ -75,6 +82,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'bbox_memory_ttl_sec': 15.0,
     'max_detection_rounds_per_scan': 8,
     'one_pose_per_detection_round': False,
+    'max_pose_attempts_per_scan': 0,
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
@@ -179,6 +187,12 @@ def load_config(config_file: str) -> WorkflowConfig:
         detections_topic_name=str(merged_config['detections_topic_name']),
         detections_topic_qos=detections_topic_qos,
         detections_topic_stale_sec=max(0.0, float(merged_config['detections_topic_stale_sec'])),
+        detection_topic_wait_timeout_sec=max(
+            0.1, float(merged_config['detection_topic_wait_timeout_sec'])),
+        detection_topic_fallback_to_action=_coerce_bool(
+            merged_config['detection_topic_fallback_to_action']),
+        detection_action_fallback_timeout_sec=max(
+            0.1, float(merged_config['detection_action_fallback_timeout_sec'])),
         estimate_pose_action_name=str(merged_config['estimate_pose_action_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         additional_pose_timeout_sec=max(0.1, float(merged_config['additional_pose_timeout_sec'])),
@@ -194,6 +208,7 @@ def load_config(config_file: str) -> WorkflowConfig:
         max_detection_rounds_per_scan=max(1, int(merged_config['max_detection_rounds_per_scan'])),
         one_pose_per_detection_round=_coerce_bool(
             merged_config['one_pose_per_detection_round']),
+        max_pose_attempts_per_scan=max(0, int(merged_config['max_pose_attempts_per_scan'])),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),

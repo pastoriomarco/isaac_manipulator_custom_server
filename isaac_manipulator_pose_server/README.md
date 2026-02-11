@@ -259,6 +259,9 @@ Important fields:
 - `detections_topic_name`: detector topic used in direct mode when `detection_source_mode: topic`
 - `detections_topic_qos`: `SENSOR_DATA` or `DEFAULT` for direct-mode detection subscription
 - `detections_topic_stale_sec`: max allowed detector-topic age in direct mode
+- `detection_topic_wait_timeout_sec`: per-round wait budget for fresh detector topic data
+- `detection_topic_fallback_to_action`: when topic wait times out, try one `detect_objects` action call
+- `detection_action_fallback_timeout_sec`: timeout used for that fallback `detect_objects` call
 - `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
 - `action_retry_count`: retries for action waits/calls in direct mode
 - `estimate_pose_retry_count`: retries for each FoundationPose action in direct mode
@@ -270,6 +273,7 @@ Important fields:
 - `bbox_memory_ttl_sec`: lifetime of remembered boxes
 - `max_detection_rounds_per_scan`: max detect rounds when collecting `max_objects > 1`
 - `one_pose_per_detection_round`: if `false`, try multiple candidates from a detect round before re-detecting (faster)
+- `max_pose_attempts_per_scan`: cap FoundationPose calls per scan (`0` means auto=`max_objects+1`)
 
 For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
 (for example `45.0` seconds).

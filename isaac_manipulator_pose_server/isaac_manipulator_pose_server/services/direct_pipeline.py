@@ -27,6 +27,7 @@ class DirectBinObjectPosePipeline:
         self._clear_objects_service_available = True
         self._clear_objects_service_warned_unavailable = False
         self._bbox_memory: List[Dict[str, Any]] = []
+        self._detect_action_server_ready = False
         self._detections_cv = threading.Condition()
         self._latest_detections_msg: Optional[Detection2DArray] = None
         self._latest_detections_monotonic_sec: float = 0.0
@@ -91,20 +92,24 @@ class DirectBinObjectPosePipeline:
             if target_pose_count > 0
             else 1
         )
+        pose_attempt_limit = 0
+        if self._config.max_pose_attempts_per_scan > 0:
+            pose_attempt_limit = self._config.max_pose_attempts_per_scan
+        elif target_pose_count > 0:
+            # Auto mode: allow one extra attempt beyond requested count.
+            pose_attempt_limit = target_pose_count + 1
+
         single_shot_mode = target_pose_count > 0 and self._config.one_pose_per_detection_round
         self._log_state(
             'MODE',
             f'one_pose_per_detection_round={single_shot_mode}, '
             f'max_detection_rounds={detection_round_limit}, '
-            f'detection_source_mode={self._config.detection_source_mode}.'
+            f'detection_source_mode={self._config.detection_source_mode}, '
+            f'max_pose_attempts={pose_attempt_limit if pose_attempt_limit > 0 else "unlimited"}.'
         )
 
         if self._config.detection_source_mode == 'action':
-            self._wait_for_action_server(
-                self._detect_objects_client,
-                self._config.detect_objects_action_name,
-                self._config.action_timeout_sec
-            )
+            self._ensure_detect_action_server_ready(self._config.action_timeout_sec)
         self._wait_for_action_server(
             self._estimate_pose_client,
             self._config.estimate_pose_action_name,
@@ -114,11 +119,20 @@ class DirectBinObjectPosePipeline:
         object_pose_records: List[Dict] = []
         attempted_records: List[Dict] = []
         pose_attempt_count = 0
+        pose_limit_reached = False
         had_any_candidates = False
         last_detection_receive_sec = 0.0
 
         for detection_round in range(1, detection_round_limit + 1):
             if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
+                break
+            if pose_attempt_limit > 0 and pose_attempt_count >= pose_attempt_limit:
+                pose_limit_reached = True
+                self._log_state(
+                    'POSE_LIMIT',
+                    f'Pose attempt limit reached ({pose_attempt_count}/{pose_attempt_limit}); '
+                    'stopping scan early.'
+                )
                 break
 
             detections, last_detection_receive_sec = self._acquire_detections(
@@ -174,6 +188,14 @@ class DirectBinObjectPosePipeline:
             selected_records = candidate_records if not single_shot_mode else [candidate_records[0]]
 
             for record in selected_records:
+                if pose_attempt_limit > 0 and pose_attempt_count >= pose_attempt_limit:
+                    pose_limit_reached = True
+                    self._log_state(
+                        'POSE_LIMIT',
+                        f'Pose attempt limit reached ({pose_attempt_count}/{pose_attempt_limit}); '
+                        'skipping remaining candidates.'
+                    )
+                    break
                 attempted_records.append(record)
                 goal = EstimatePoseFoundationPose.Goal()
                 goal.roi = record['detection']
@@ -212,10 +234,17 @@ class DirectBinObjectPosePipeline:
                 if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
                     break
 
+            if pose_limit_reached:
+                break
             if target_pose_count <= 0:
                 break
 
         if not object_pose_records:
+            if pose_limit_reached:
+                raise RuntimeError(
+                    f'Pose attempt limit reached ({pose_attempt_count}/{pose_attempt_limit}) '
+                    'before any pose succeeded.'
+                )
             if not had_any_candidates:
                 raise RuntimeError('No detections left after applying class-id and NMS filters.')
             raise RuntimeError(
@@ -227,6 +256,11 @@ class DirectBinObjectPosePipeline:
                 f'[scan_state] POSE_PARTIAL: requested {target_pose_count}, '
                 f'but only {len(object_pose_records)} pose(s) succeeded.'
             )
+            if pose_limit_reached:
+                self._node.get_logger().warning(
+                    f'[scan_state] POSE_PARTIAL: stopped early due to pose attempt limit '
+                    f'({pose_attempt_count}/{pose_attempt_limit}).'
+                )
 
         return object_pose_records
 
@@ -268,6 +302,16 @@ class DirectBinObjectPosePipeline:
         if qos_name == 'SENSOR_DATA':
             return qos_profile_sensor_data
         return QoSProfile(depth=10)
+
+    def _ensure_detect_action_server_ready(self, timeout_sec: float):
+        if self._detect_action_server_ready:
+            return
+        self._wait_for_action_server(
+            self._detect_objects_client,
+            self._config.detect_objects_action_name,
+            timeout_sec
+        )
+        self._detect_action_server_ready = True
 
     def _detections_topic_callback(self, msg: Detection2DArray):
         with self._detections_cv:
@@ -315,19 +359,54 @@ class DirectBinObjectPosePipeline:
         newer_than_sec: float,
     ) -> Tuple[List[Detection2D], float]:
         if self._config.detection_source_mode == 'topic':
-            detections_msg, receive_time_sec = self._wait_for_detections_topic(
-                timeout_sec=timeout_sec,
-                newer_than_sec=newer_than_sec,
-            )
-            age_sec = time.monotonic() - receive_time_sec
-            self._log_state(
-                'DETECTION_SOURCE',
-                f'Round {detection_round}: consumed topic data '
-                f'from {self._config.detections_topic_name} '
-                f'(age={age_sec:.3f}s).'
-            )
-            return list(detections_msg.detections), receive_time_sec
+            topic_timeout_sec = min(timeout_sec, self._config.detection_topic_wait_timeout_sec)
+            try:
+                detections_msg, receive_time_sec = self._wait_for_detections_topic(
+                    timeout_sec=topic_timeout_sec,
+                    newer_than_sec=newer_than_sec,
+                )
+                age_sec = time.monotonic() - receive_time_sec
+                self._log_state(
+                    'DETECTION_SOURCE',
+                    f'Round {detection_round}: consumed topic data '
+                    f'from {self._config.detections_topic_name} '
+                    f'(age={age_sec:.3f}s).'
+                )
+                return list(detections_msg.detections), receive_time_sec
+            except RuntimeError as topic_error:
+                if not self._config.detection_topic_fallback_to_action:
+                    raise
 
+                fallback_timeout_sec = min(
+                    timeout_sec, self._config.detection_action_fallback_timeout_sec)
+                self._node.get_logger().warning(
+                    f'[scan_state] DETECTION_SOURCE: Round {detection_round}: '
+                    f'{topic_error} Falling back to detect_objects action '
+                    f'(timeout={fallback_timeout_sec:.1f}s).'
+                )
+                try:
+                    self._ensure_detect_action_server_ready(fallback_timeout_sec)
+                    detect_objects_result = self._send_action_goal_and_wait_result(
+                        client=self._detect_objects_client,
+                        goal=DetectObjects.Goal(),
+                        timeout_sec=fallback_timeout_sec,
+                        action_label=f'DetectObjectsFallback(round={detection_round})',
+                        retry_count=0,
+                    )
+                except RuntimeError as fallback_error:
+                    raise RuntimeError(
+                        f'{topic_error} Fallback detect_objects failed: {fallback_error}'
+                    ) from fallback_error
+
+                detections = list(detect_objects_result.detections.detections)
+                self._log_state(
+                    'DETECTION_SOURCE',
+                    f'Round {detection_round}: fallback action returned '
+                    f'{len(detections)} detection(s).'
+                )
+                return detections, time.monotonic()
+
+        self._ensure_detect_action_server_ready(timeout_sec)
         detect_objects_result = self._send_action_goal_and_wait_result(
             client=self._detect_objects_client,
             goal=DetectObjects.Goal(),
