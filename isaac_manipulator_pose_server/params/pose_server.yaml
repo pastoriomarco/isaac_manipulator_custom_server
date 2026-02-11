@@ -60,6 +60,12 @@ pose_server:
   estimate_pose_retry_count: 0
   retry_backoff_sec: 0.5
   nms_iou_threshold: 0.5
+  # Single-shot bbox-selection memory for multi-object scans:
+  # a new candidate is skipped if it is too close to a recently succeeded bbox.
+  enable_bbox_memory: true
+  bbox_memory_center_distance_px: 100.0
+  bbox_memory_ttl_sec: 15.0
+  max_detection_rounds_per_scan: 8
 
   # Outputs.
   output_frame_id: 'base_link'

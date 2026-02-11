@@ -259,6 +259,10 @@ Important fields:
 - `estimate_pose_retry_count`: retries for each FoundationPose action in direct mode
 - `retry_backoff_sec`: delay between retries in direct mode
 - `nms_iou_threshold`: IoU threshold for class-aware suppression in direct mode
+- `enable_bbox_memory`: keep short-term memory of successful boxes in direct mode
+- `bbox_memory_center_distance_px`: minimum center distance for a new box vs remembered boxes
+- `bbox_memory_ttl_sec`: lifetime of remembered boxes
+- `max_detection_rounds_per_scan`: max detect rounds when collecting `max_objects > 1`
 
 For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
 (for example `45.0` seconds).

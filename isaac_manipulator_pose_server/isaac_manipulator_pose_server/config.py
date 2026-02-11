@@ -31,6 +31,10 @@ class WorkflowConfig:
     estimate_pose_retry_count: int
     retry_backoff_sec: float
     nms_iou_threshold: float
+    enable_bbox_memory: bool
+    bbox_memory_center_distance_px: float
+    bbox_memory_ttl_sec: float
+    max_detection_rounds_per_scan: int
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -55,10 +59,22 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'estimate_pose_retry_count': 0,
     'retry_backoff_sec': 0.5,
     'nms_iou_threshold': 0.5,
+    'enable_bbox_memory': True,
+    'bbox_memory_center_distance_px': 100.0,
+    'bbox_memory_ttl_sec': 15.0,
+    'max_detection_rounds_per_scan': 8,
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
 }
+
+
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in ('1', 'true', 'yes', 'on')
+    return bool(value)
 
 
 def load_config(config_file: str) -> WorkflowConfig:
@@ -139,6 +155,11 @@ def load_config(config_file: str) -> WorkflowConfig:
         estimate_pose_retry_count=max(0, int(merged_config['estimate_pose_retry_count'])),
         retry_backoff_sec=max(0.0, float(merged_config['retry_backoff_sec'])),
         nms_iou_threshold=min(1.0, max(0.0, float(merged_config['nms_iou_threshold']))),
+        enable_bbox_memory=_coerce_bool(merged_config['enable_bbox_memory']),
+        bbox_memory_center_distance_px=max(
+            0.0, float(merged_config['bbox_memory_center_distance_px'])),
+        bbox_memory_ttl_sec=max(0.0, float(merged_config['bbox_memory_ttl_sec'])),
+        max_detection_rounds_per_scan=max(1, int(merged_config['max_detection_rounds_per_scan'])),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),

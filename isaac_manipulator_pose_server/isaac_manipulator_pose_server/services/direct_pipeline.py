@@ -24,6 +24,7 @@ class DirectBinObjectPosePipeline:
         self._config = config
         self._clear_objects_service_available = True
         self._clear_objects_service_warned_unavailable = False
+        self._bbox_memory: List[Dict[str, Any]] = []
         self._detect_objects_client = ActionClient(
             self._node, DetectObjects, self._config.detect_objects_action_name)
         self._estimate_pose_client = ActionClient(
@@ -62,101 +63,139 @@ class DirectBinObjectPosePipeline:
         return ScanResult(pose_array=pose_array, summary=summary)
 
     def _run_pipeline(self, run_config: ScanRunConfig) -> List[Dict]:
-        self._wait_for_action_server(
-            self._detect_objects_client,
-            self._config.detect_objects_action_name,
-            self._config.action_timeout_sec
-        )
-        detect_objects_result = self._send_action_goal_and_wait_result(
-            client=self._detect_objects_client,
-            goal=DetectObjects.Goal(),
-            timeout_sec=self._config.action_timeout_sec,
-            action_label='DetectObjects'
-        )
-
-        detections = list(detect_objects_result.detections.detections)
-        self._log_state('DETECTION', f'DetectObjects returned {len(detections)} detection(s).')
-        if not detections:
-            raise RuntimeError('DetectObjects returned no detections.')
-
         effective_target_class_ids = (
             run_config.target_class_ids
             if run_config.target_class_ids is not None
             else self._config.target_class_ids
         )
-        candidate_records = self._select_detections(
-            detections,
-            0,
-            effective_target_class_ids,
-        )
-        target_pose_count = (
-            run_config.max_objects if run_config.max_objects > 0 else len(candidate_records)
-        )
-        self._log_state(
-            'SELECTION',
-            f'Candidate detections after class/NMS: {len(candidate_records)}. '
-            f'Target pose count: {target_pose_count}.'
-        )
-        for candidate in candidate_records:
-            bbox = candidate['detection'].bbox
-            self._log_state(
-                'CANDIDATE',
-                f'id={candidate["object_id"]} class={candidate["class_id"]} '
-                f'score={candidate["class_score"]:.4f} '
-                f'bbox=({float(bbox.center.position.x):.1f},'
-                f'{float(bbox.center.position.y):.1f},'
-                f'{float(bbox.size_x):.1f},'
-                f'{float(bbox.size_y):.1f})'
-            )
-
-        if not candidate_records:
-            raise RuntimeError('No detections left after applying class-id and NMS filters.')
-
         effective_shared_mesh_file_path = (
             run_config.shared_mesh_file_path
             if run_config.shared_mesh_file_path is not None
             else self._config.shared_mesh_file_path
         )
 
+        target_pose_count = max(0, int(run_config.max_objects))
+        detection_round_limit = (
+            self._config.max_detection_rounds_per_scan
+            if target_pose_count > 0
+            else 1
+        )
+
+        self._wait_for_action_server(
+            self._detect_objects_client,
+            self._config.detect_objects_action_name,
+            self._config.action_timeout_sec
+        )
         self._wait_for_action_server(
             self._estimate_pose_client,
             self._config.estimate_pose_action_name,
             self._config.action_timeout_sec
         )
+
         object_pose_records: List[Dict] = []
-        for record in candidate_records:
-            if len(object_pose_records) >= target_pose_count:
+        attempted_records: List[Dict] = []
+        had_any_candidates = False
+
+        for detection_round in range(1, detection_round_limit + 1):
+            if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
                 break
 
-            goal = EstimatePoseFoundationPose.Goal()
-            goal.roi = record['detection']
-            goal.use_segmentation_mask = False
-            goal.mesh_file_path = effective_shared_mesh_file_path
-            goal.object_frame_name = record['frame_name']
-            try:
-                pose_result = self._send_action_goal_and_wait_result(
-                    client=self._estimate_pose_client,
-                    goal=goal,
-                    timeout_sec=self._config.action_timeout_sec,
-                    action_label=f'EstimatePoseFoundationPose({record["object_id"]})',
-                    retry_count=self._config.estimate_pose_retry_count,
+            detect_objects_result = self._send_action_goal_and_wait_result(
+                client=self._detect_objects_client,
+                goal=DetectObjects.Goal(),
+                timeout_sec=self._config.action_timeout_sec,
+                action_label=f'DetectObjects(round={detection_round})'
+            )
+            detections = list(detect_objects_result.detections.detections)
+            self._log_state(
+                'DETECTION',
+                f'Round {detection_round}: DetectObjects returned {len(detections)} detection(s).'
+            )
+            if not detections:
+                continue
+
+            candidate_records = self._select_detections(
+                detections,
+                0,
+                effective_target_class_ids,
+            )
+            candidate_records = self._filter_novel_candidates(
+                candidates=candidate_records,
+                attempted_records=attempted_records
+            )
+            if not candidate_records:
+                self._log_state(
+                    'SELECTION',
+                    f'Round {detection_round}: no novel candidates after memory/distance filtering.'
                 )
-                record['pose'] = self._extract_pose_from_result(
-                    pose_result, record['object_id'])
-                object_pose_records.append(record)
-            except RuntimeError as exception:
-                self._node.get_logger().warning(
-                    f'[scan_state] POSE_SKIP: object_id={record["object_id"]} '
-                    f'class={record["class_id"]} score={record["class_score"]:.4f} '
-                    f'failed: {exception}'
+                continue
+
+            had_any_candidates = True
+            self._log_state(
+                'SELECTION',
+                f'Round {detection_round}: {len(candidate_records)} candidate(s) after '
+                'class/NMS/memory filters.'
+            )
+            for candidate in candidate_records:
+                bbox = candidate['detection'].bbox
+                self._log_state(
+                    'CANDIDATE',
+                    f'round={detection_round} id={candidate["object_id"]} '
+                    f'class={candidate["class_id"]} score={candidate["class_score"]:.4f} '
+                    f'bbox=({float(bbox.center.position.x):.1f},'
+                    f'{float(bbox.center.position.y):.1f},'
+                    f'{float(bbox.size_x):.1f},'
+                    f'{float(bbox.size_y):.1f})'
                 )
 
+            # Single-shot pose call per detection round for bounded scans, matching the
+            # "pick one bbox at a time" strategy.
+            selected_records = (
+                candidate_records
+                if target_pose_count <= 0
+                else [candidate_records[0]]
+            )
+
+            for record in selected_records:
+                attempted_records.append(record)
+                goal = EstimatePoseFoundationPose.Goal()
+                goal.roi = record['detection']
+                goal.use_segmentation_mask = False
+                goal.mesh_file_path = effective_shared_mesh_file_path
+                goal.object_frame_name = record['frame_name']
+                try:
+                    pose_result = self._send_action_goal_and_wait_result(
+                        client=self._estimate_pose_client,
+                        goal=goal,
+                        timeout_sec=self._config.action_timeout_sec,
+                        action_label=f'EstimatePoseFoundationPose({record["object_id"]})',
+                        retry_count=self._config.estimate_pose_retry_count,
+                    )
+                    record['pose'] = self._extract_pose_from_result(
+                        pose_result, record['object_id'])
+                    object_pose_records.append(record)
+                    self._remember_bbox(record)
+                except RuntimeError as exception:
+                    self._node.get_logger().warning(
+                        f'[scan_state] POSE_SKIP: object_id={record["object_id"]} '
+                        f'class={record["class_id"]} score={record["class_score"]:.4f} '
+                        f'failed: {exception}'
+                    )
+
+                if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
+                    break
+
+            if target_pose_count <= 0:
+                break
+
         if not object_pose_records:
+            if not had_any_candidates:
+                raise RuntimeError('No detections left after applying class-id and NMS filters.')
             raise RuntimeError(
                 'Pose estimation failed for all selected detections.'
             )
 
-        if len(object_pose_records) < target_pose_count:
+        if target_pose_count > 0 and len(object_pose_records) < target_pose_count:
             self._node.get_logger().warning(
                 f'[scan_state] POSE_PARTIAL: requested {target_pose_count}, '
                 f'but only {len(object_pose_records)} pose(s) succeeded.'
@@ -198,6 +237,63 @@ class DirectBinObjectPosePipeline:
 
         return selected_records
 
+    def _filter_novel_candidates(
+        self,
+        *,
+        candidates: List[Dict],
+        attempted_records: List[Dict],
+    ) -> List[Dict]:
+        filtered_candidates: List[Dict] = []
+        for candidate in candidates:
+            if self._is_spatially_duplicate(candidate, attempted_records):
+                continue
+            if self._config.enable_bbox_memory and self._is_duplicate_from_memory(candidate):
+                continue
+            filtered_candidates.append(candidate)
+        return filtered_candidates
+
+    def _is_duplicate_from_memory(self, candidate: Dict) -> bool:
+        self._prune_bbox_memory()
+        return self._is_spatially_duplicate(candidate, self._bbox_memory)
+
+    def _remember_bbox(self, record: Dict):
+        if not self._config.enable_bbox_memory:
+            return
+
+        self._prune_bbox_memory()
+        self._bbox_memory.append({
+            'class_id': record['class_id'],
+            'detection': record['detection'],
+            'timestamp_sec': time.monotonic(),
+        })
+
+    def _prune_bbox_memory(self):
+        if not self._bbox_memory:
+            return
+        if self._config.bbox_memory_ttl_sec <= 0.0:
+            self._bbox_memory.clear()
+            return
+
+        now = time.monotonic()
+        self._bbox_memory = [
+            item for item in self._bbox_memory
+            if now - float(item['timestamp_sec']) <= self._config.bbox_memory_ttl_sec
+        ]
+
+    def _is_spatially_duplicate(self, candidate: Dict, reference_records: List[Dict]) -> bool:
+        for reference in reference_records:
+            if reference['class_id'] != candidate['class_id']:
+                continue
+            iou = self._bbox_iou(candidate['detection'], reference['detection'])
+            if iou >= self._config.nms_iou_threshold:
+                return True
+
+            center_distance = self._bbox_center_distance(
+                candidate['detection'], reference['detection'])
+            if center_distance <= self._config.bbox_memory_center_distance_px:
+                return True
+        return False
+
     def _is_suppressed_by_nms(self, candidate: Dict, accepted: List[Dict]) -> bool:
         for accepted_record in accepted:
             if accepted_record['class_id'] != candidate['class_id']:
@@ -234,6 +330,15 @@ class DirectBinObjectPosePipeline:
             return 0.0
 
         return inter_area / union_area
+
+    def _bbox_center_distance(self, first: Detection2D, second: Detection2D) -> float:
+        first_x = float(first.bbox.center.position.x)
+        first_y = float(first.bbox.center.position.y)
+        second_x = float(second.bbox.center.position.x)
+        second_y = float(second.bbox.center.position.y)
+        delta_x = first_x - second_x
+        delta_y = first_y - second_y
+        return (delta_x * delta_x + delta_y * delta_y) ** 0.5
 
     def _bbox_to_xyxy(self, detection: Detection2D) -> Optional[Tuple[float, float, float, float]]:
         width = float(detection.bbox.size_x)
