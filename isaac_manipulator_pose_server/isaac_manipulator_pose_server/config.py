@@ -31,6 +31,7 @@ class WorkflowConfig:
     detection_topic_wait_timeout_sec: float
     detection_topic_fallback_to_action: bool
     detection_action_fallback_timeout_sec: float
+    detection_action_fallback_retry_count: int
     estimate_pose_action_name: str
     action_timeout_sec: float
     additional_pose_timeout_sec: float
@@ -66,9 +67,10 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'detections_topic_name': '/detections_output',
     'detections_topic_qos': 'SENSOR_DATA',
     'detections_topic_stale_sec': 5.0,
-    'detection_topic_wait_timeout_sec': 2.0,
+    'detection_topic_wait_timeout_sec': 3.0,
     'detection_topic_fallback_to_action': True,
     'detection_action_fallback_timeout_sec': 6.0,
+    'detection_action_fallback_retry_count': 1,
     'estimate_pose_action_name': '/estimate_pose_foundation_pose',
     'action_timeout_sec': 45.0,
     'additional_pose_timeout_sec': 4.0,
@@ -193,6 +195,8 @@ def load_config(config_file: str) -> WorkflowConfig:
             merged_config['detection_topic_fallback_to_action']),
         detection_action_fallback_timeout_sec=max(
             0.1, float(merged_config['detection_action_fallback_timeout_sec'])),
+        detection_action_fallback_retry_count=max(
+            0, int(merged_config['detection_action_fallback_retry_count'])),
         estimate_pose_action_name=str(merged_config['estimate_pose_action_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         additional_pose_timeout_sec=max(0.1, float(merged_config['additional_pose_timeout_sec'])),

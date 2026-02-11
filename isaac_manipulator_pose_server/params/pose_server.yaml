@@ -60,11 +60,13 @@ pose_server:
   # Max acceptable age (seconds) for detector topic data in topic mode.
   detections_topic_stale_sec: 5.0
   # Topic wait budget per detection round (seconds) before optional action fallback.
-  detection_topic_wait_timeout_sec: 2.0
+  detection_topic_wait_timeout_sec: 3.0
   # If topic wait times out, trigger one detect_objects action call as fallback.
   detection_topic_fallback_to_action: true
   # Timeout for the fallback detect_objects action call.
   detection_action_fallback_timeout_sec: 6.0
+  # Number of retries for fallback detect_objects action in topic mode.
+  detection_action_fallback_retry_count: 1
   estimate_pose_action_name: '/estimate_pose_foundation_pose'
 
   # Timeouts (seconds).

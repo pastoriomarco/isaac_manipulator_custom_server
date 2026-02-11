@@ -105,7 +105,13 @@ class DirectBinObjectPosePipeline:
             f'one_pose_per_detection_round={single_shot_mode}, '
             f'max_detection_rounds={detection_round_limit}, '
             f'detection_source_mode={self._config.detection_source_mode}, '
-            f'max_pose_attempts={pose_attempt_limit if pose_attempt_limit > 0 else "unlimited"}.'
+            f'max_pose_attempts={pose_attempt_limit if pose_attempt_limit > 0 else "unlimited"}, '
+            f'detection_topic_wait_timeout_sec={self._config.detection_topic_wait_timeout_sec:.1f}, '
+            f'detection_action_fallback_timeout_sec='
+            f'{self._config.detection_action_fallback_timeout_sec:.1f}, '
+            f'detection_action_fallback_retry_count='
+            f'{self._config.detection_action_fallback_retry_count}, '
+            f'additional_pose_timeout_sec={self._config.additional_pose_timeout_sec:.1f}.'
         )
 
         if self._config.detection_source_mode == 'action':
@@ -403,7 +409,7 @@ class DirectBinObjectPosePipeline:
                         goal=DetectObjects.Goal(),
                         timeout_sec=fallback_timeout_sec,
                         action_label=f'DetectObjectsFallback(round={detection_round})',
-                        retry_count=0,
+                        retry_count=self._config.detection_action_fallback_retry_count,
                     )
                 except RuntimeError as fallback_error:
                     raise RuntimeError(

@@ -263,6 +263,7 @@ Important fields:
 - `detection_topic_fallback_to_action`: when topic wait times out, try one `detect_objects` action call
 : fallback is applied only while no pose has succeeded yet in the current scan
 - `detection_action_fallback_timeout_sec`: timeout used for that fallback `detect_objects` call
+- `detection_action_fallback_retry_count`: retries for fallback `detect_objects` calls in topic mode
 - `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
 - `action_retry_count`: retries for action waits/calls in direct mode
 - `estimate_pose_retry_count`: retries for each FoundationPose action in direct mode
@@ -278,6 +279,12 @@ Important fields:
 
 For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
 (for example `45.0` seconds).
+
+For more stable direct-mode detection under load, start with:
+
+- `detection_topic_wait_timeout_sec: 5.0`
+- `detection_action_fallback_timeout_sec: 20.0`
+- `detection_action_fallback_retry_count: 1`
 
 For multi-object scans across detected classes, leave `object_key` empty and keep
 `target_class_ids` empty.
