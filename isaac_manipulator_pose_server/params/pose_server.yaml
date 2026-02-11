@@ -58,7 +58,7 @@ pose_server:
   detections_topic_name: '/detections_output'
   detections_topic_qos: 'SENSOR_DATA'
   # Max acceptable age (seconds) for detector topic data in topic mode.
-  detections_topic_stale_sec: 1.0
+  detections_topic_stale_sec: 5.0
   # Topic wait budget per detection round (seconds) before optional action fallback.
   detection_topic_wait_timeout_sec: 2.0
   # If topic wait times out, trigger one detect_objects action call as fallback.
@@ -70,7 +70,7 @@ pose_server:
   # Timeouts (seconds).
   action_timeout_sec: 45.0
   # Timeout for pose attempts after the first pose attempt in a multi-object scan.
-  additional_pose_timeout_sec: 2.0
+  additional_pose_timeout_sec: 4.0
   service_timeout_sec: 10.0
   action_retry_count: 2
   estimate_pose_retry_count: 0

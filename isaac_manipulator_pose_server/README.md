@@ -261,6 +261,7 @@ Important fields:
 - `detections_topic_stale_sec`: max allowed detector-topic age in direct mode
 - `detection_topic_wait_timeout_sec`: per-round wait budget for fresh detector topic data
 - `detection_topic_fallback_to_action`: when topic wait times out, try one `detect_objects` action call
+: fallback is applied only while no pose has succeeded yet in the current scan
 - `detection_action_fallback_timeout_sec`: timeout used for that fallback `detect_objects` call
 - `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
 - `action_retry_count`: retries for action waits/calls in direct mode

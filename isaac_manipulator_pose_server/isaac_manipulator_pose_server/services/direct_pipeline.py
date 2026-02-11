@@ -135,11 +135,22 @@ class DirectBinObjectPosePipeline:
                 )
                 break
 
-            detections, last_detection_receive_sec = self._acquire_detections(
-                detection_round=detection_round,
-                timeout_sec=self._config.action_timeout_sec,
-                newer_than_sec=last_detection_receive_sec,
-            )
+            try:
+                detections, last_detection_receive_sec = self._acquire_detections(
+                    detection_round=detection_round,
+                    timeout_sec=self._config.action_timeout_sec,
+                    newer_than_sec=last_detection_receive_sec,
+                    allow_action_fallback=(len(object_pose_records) == 0),
+                )
+            except RuntimeError as exception:
+                if object_pose_records:
+                    self._node.get_logger().warning(
+                        f'[scan_state] DETECTION_SOURCE: Round {detection_round} failed after '
+                        f'{len(object_pose_records)} pose(s) already succeeded: {exception}. '
+                        'Stopping scan with partial results.'
+                    )
+                    break
+                raise
             self._log_state(
                 'DETECTION',
                 f'Round {detection_round}: DetectObjects returned {len(detections)} detection(s).'
@@ -357,6 +368,7 @@ class DirectBinObjectPosePipeline:
         detection_round: int,
         timeout_sec: float,
         newer_than_sec: float,
+        allow_action_fallback: bool,
     ) -> Tuple[List[Detection2D], float]:
         if self._config.detection_source_mode == 'topic':
             topic_timeout_sec = min(timeout_sec, self._config.detection_topic_wait_timeout_sec)
@@ -374,7 +386,7 @@ class DirectBinObjectPosePipeline:
                 )
                 return list(detections_msg.detections), receive_time_sec
             except RuntimeError as topic_error:
-                if not self._config.detection_topic_fallback_to_action:
+                if not self._config.detection_topic_fallback_to_action or not allow_action_fallback:
                     raise
 
                 fallback_timeout_sec = min(
