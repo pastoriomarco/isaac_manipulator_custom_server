@@ -119,7 +119,26 @@ This launch starts a perception-only stack required by this package:
 It does not launch UR driver, MoveIt, cuMotion, or nvblox.
 
 ```bash
-ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py
+ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
+  camera_type:=ISAAC_SIM \
+  use_sim_time:=true \
+  foundationpose_depth_topic:=/foundation_pose_server/depth \
+  rgb_image_topic:=/image_rect \
+  rgb_camera_info_topic:=/camera_info_rect \
+  depth_image_topic:=/depth \
+  depth_camera_info_topic:=/camera_info_rect \
+  rgb_image_width:=640 rgb_image_height:=480 \
+  depth_image_width:=640 depth_image_height:=480 \
+  input_qos:=DEFAULT output_qos:=DEFAULT \
+  input_fps:=8 dropped_fps:=8 \
+  rt_detr_confidence_threshold:=0.3 \
+  rtdetr_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/synthetica_detr/sdetr_grasp.plan" \
+  refine_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan" \
+  score_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_trt_engine.plan" \
+  refine_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_model.onnx" \
+  score_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_model.onnx" \
+  mesh_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj" \
+  texture_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/baked_mesh_tex0.png"
 ```
 
 Detector selection is launch-time configurable:
