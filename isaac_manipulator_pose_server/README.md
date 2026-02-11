@@ -263,6 +263,7 @@ Important fields:
 - `bbox_memory_center_distance_px`: minimum center distance for a new box vs remembered boxes
 - `bbox_memory_ttl_sec`: lifetime of remembered boxes
 - `max_detection_rounds_per_scan`: max detect rounds when collecting `max_objects > 1`
+- `one_pose_per_detection_round`: if `false`, try multiple candidates from a detect round before re-detecting (faster)
 
 For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
 (for example `45.0` seconds).

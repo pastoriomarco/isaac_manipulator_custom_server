@@ -35,6 +35,7 @@ class WorkflowConfig:
     bbox_memory_center_distance_px: float
     bbox_memory_ttl_sec: float
     max_detection_rounds_per_scan: int
+    one_pose_per_detection_round: bool
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -63,6 +64,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'bbox_memory_center_distance_px': 100.0,
     'bbox_memory_ttl_sec': 15.0,
     'max_detection_rounds_per_scan': 8,
+    'one_pose_per_detection_round': False,
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
@@ -160,6 +162,8 @@ def load_config(config_file: str) -> WorkflowConfig:
             0.0, float(merged_config['bbox_memory_center_distance_px'])),
         bbox_memory_ttl_sec=max(0.0, float(merged_config['bbox_memory_ttl_sec'])),
         max_detection_rounds_per_scan=max(1, int(merged_config['max_detection_rounds_per_scan'])),
+        one_pose_per_detection_round=_coerce_bool(
+            merged_config['one_pose_per_detection_round']),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),

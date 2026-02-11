@@ -66,6 +66,9 @@ pose_server:
   bbox_memory_center_distance_px: 100.0
   bbox_memory_ttl_sec: 15.0
   max_detection_rounds_per_scan: 8
+  # false: try multiple candidate boxes from one detect round before re-detecting (faster)
+  # true: one pose attempt per detect round (more conservative)
+  one_pose_per_detection_round: false
 
   # Outputs.
   output_frame_id: 'base_link'

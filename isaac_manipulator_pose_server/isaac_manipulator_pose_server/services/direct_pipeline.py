@@ -80,6 +80,12 @@ class DirectBinObjectPosePipeline:
             if target_pose_count > 0
             else 1
         )
+        single_shot_mode = target_pose_count > 0 and self._config.one_pose_per_detection_round
+        self._log_state(
+            'MODE',
+            f'one_pose_per_detection_round={single_shot_mode}, '
+            f'max_detection_rounds={detection_round_limit}.'
+        )
 
         self._wait_for_action_server(
             self._detect_objects_client,
@@ -148,13 +154,7 @@ class DirectBinObjectPosePipeline:
                     f'{float(bbox.size_y):.1f})'
                 )
 
-            # Single-shot pose call per detection round for bounded scans, matching the
-            # "pick one bbox at a time" strategy.
-            selected_records = (
-                candidate_records
-                if target_pose_count <= 0
-                else [candidate_records[0]]
-            )
+            selected_records = candidate_records if not single_shot_mode else [candidate_records[0]]
 
             for record in selected_records:
                 attempted_records.append(record)
