@@ -22,6 +22,8 @@ class DirectBinObjectPosePipeline:
     def __init__(self, node: Node, config: WorkflowConfig):
         self._node = node
         self._config = config
+        self._clear_objects_service_available = True
+        self._clear_objects_service_warned_unavailable = False
         self._detect_objects_client = ActionClient(
             self._node, DetectObjects, self._config.detect_objects_action_name)
         self._estimate_pose_client = ActionClient(
@@ -269,10 +271,18 @@ class DirectBinObjectPosePipeline:
         return pose_array, summary
 
     def _try_clear_objects(self):
-        if not self._clear_objects_client.wait_for_service(
-                timeout_sec=self._config.service_timeout_sec):
-            self._node.get_logger().warning(
-                'Skipping ClearObjects because the service is unavailable in direct mode.')
+        if not self._clear_objects_service_available:
+            return
+
+        # In direct mode this service is typically absent, so use a short probe to
+        # avoid paying the full service timeout on every scan.
+        probe_timeout_sec = min(0.2, max(0.0, self._config.service_timeout_sec))
+        if not self._clear_objects_client.wait_for_service(timeout_sec=probe_timeout_sec):
+            self._clear_objects_service_available = False
+            if not self._clear_objects_service_warned_unavailable:
+                self._node.get_logger().warning(
+                    'Skipping ClearObjects because the service is unavailable in direct mode.')
+                self._clear_objects_service_warned_unavailable = True
             return
 
         clear_request = ClearObjects.Request()
@@ -299,8 +309,12 @@ class DirectBinObjectPosePipeline:
             raise RuntimeError(f'{action_label} goal was rejected.')
 
         result_future = goal_handle.get_result_async()
-        wrapped_result = self._wait_for_future(
-            result_future, timeout_sec, f'{action_label} result')
+        wrapped_result = self._wait_for_action_result_or_cancel(
+            goal_handle=goal_handle,
+            result_future=result_future,
+            timeout_sec=timeout_sec,
+            action_label=action_label,
+        )
         if wrapped_result is None:
             raise RuntimeError(f'{action_label} returned no result.')
 
@@ -309,6 +323,44 @@ class DirectBinObjectPosePipeline:
                 f'{action_label} failed with status code {wrapped_result.status}.')
 
         return wrapped_result.result
+
+    def _wait_for_action_result_or_cancel(
+        self,
+        *,
+        goal_handle,
+        result_future,
+        timeout_sec: float,
+        action_label: str
+    ):
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok():
+            if result_future.done():
+                try:
+                    return result_future.result()
+                except Exception as exception:
+                    raise RuntimeError(f'{action_label} result failed: {exception}') from exception
+
+            if time.monotonic() >= deadline:
+                self._node.get_logger().warning(
+                    f'[scan_state] ACTION: {action_label} timed out after '
+                    f'{timeout_sec:.1f}s; canceling goal before retry.'
+                )
+                try:
+                    cancel_future = goal_handle.cancel_goal_async()
+                    self._wait_for_future(
+                        cancel_future,
+                        min(2.0, max(0.1, timeout_sec)),
+                        f'{action_label} cancel response'
+                    )
+                except RuntimeError as exception:
+                    self._node.get_logger().warning(
+                        f'[scan_state] ACTION: {action_label} cancel failed: {exception}'
+                    )
+                raise RuntimeError(f'{action_label} result timed out after {timeout_sec:.1f} seconds.')
+
+            time.sleep(0.01)
+
+        raise RuntimeError(f'{action_label} result interrupted by ROS shutdown.')
 
     def _send_action_goal_and_wait_result(
         self,

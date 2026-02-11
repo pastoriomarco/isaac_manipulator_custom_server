@@ -48,7 +48,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'clear_objects_service_name': '/clear_objects',
     'detect_objects_action_name': '/detect_objects',
     'estimate_pose_action_name': '/estimate_pose_foundation_pose',
-    'action_timeout_sec': 20.0,
+    'action_timeout_sec': 45.0,
     'service_timeout_sec': 10.0,
     'action_retry_count': 2,
     'retry_backoff_sec': 0.5,

@@ -259,6 +259,9 @@ Important fields:
 - `retry_backoff_sec`: delay between retries in direct mode
 - `nms_iou_threshold`: IoU threshold for class-aware suppression in direct mode
 
+For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
+(for example `45.0` seconds).
+
 For multi-object scans across detected classes, leave `object_key` empty and keep
 `target_class_ids` empty.
 
