@@ -57,6 +57,7 @@ pose_server:
   action_timeout_sec: 45.0
   service_timeout_sec: 10.0
   action_retry_count: 2
+  estimate_pose_retry_count: 0
   retry_backoff_sec: 0.5
   nms_iou_threshold: 0.5
 

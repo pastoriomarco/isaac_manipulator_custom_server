@@ -28,6 +28,7 @@ class WorkflowConfig:
     action_timeout_sec: float
     service_timeout_sec: float
     action_retry_count: int
+    estimate_pose_retry_count: int
     retry_backoff_sec: float
     nms_iou_threshold: float
     output_frame_id: str
@@ -51,6 +52,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'action_timeout_sec': 45.0,
     'service_timeout_sec': 10.0,
     'action_retry_count': 2,
+    'estimate_pose_retry_count': 0,
     'retry_backoff_sec': 0.5,
     'nms_iou_threshold': 0.5,
     'output_frame_id': 'base_link',
@@ -134,6 +136,7 @@ def load_config(config_file: str) -> WorkflowConfig:
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         service_timeout_sec=float(merged_config['service_timeout_sec']),
         action_retry_count=max(0, int(merged_config['action_retry_count'])),
+        estimate_pose_retry_count=max(0, int(merged_config['estimate_pose_retry_count'])),
         retry_backoff_sec=max(0.0, float(merged_config['retry_backoff_sec'])),
         nms_iou_threshold=min(1.0, max(0.0, float(merged_config['nms_iou_threshold']))),
         output_frame_id=str(merged_config['output_frame_id']),

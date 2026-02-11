@@ -84,16 +84,32 @@ class DirectBinObjectPosePipeline:
             if run_config.target_class_ids is not None
             else self._config.target_class_ids
         )
-        selected_records = self._select_detections(
+        candidate_records = self._select_detections(
             detections,
-            run_config.max_objects,
+            0,
             effective_target_class_ids,
+        )
+        target_pose_count = (
+            run_config.max_objects if run_config.max_objects > 0 else len(candidate_records)
         )
         self._log_state(
             'SELECTION',
-            f'Selected {len(selected_records)} detection(s) after class/NMS/max filters.'
+            f'Candidate detections after class/NMS: {len(candidate_records)}. '
+            f'Target pose count: {target_pose_count}.'
         )
-        if not selected_records:
+        for candidate in candidate_records:
+            bbox = candidate['detection'].bbox
+            self._log_state(
+                'CANDIDATE',
+                f'id={candidate["object_id"]} class={candidate["class_id"]} '
+                f'score={candidate["class_score"]:.4f} '
+                f'bbox=({float(bbox.center.position.x):.1f},'
+                f'{float(bbox.center.position.y):.1f},'
+                f'{float(bbox.size_x):.1f},'
+                f'{float(bbox.size_y):.1f})'
+            )
+
+        if not candidate_records:
             raise RuntimeError('No detections left after applying class-id and NMS filters.')
 
         effective_shared_mesh_file_path = (
@@ -107,21 +123,46 @@ class DirectBinObjectPosePipeline:
             self._config.estimate_pose_action_name,
             self._config.action_timeout_sec
         )
-        for record in selected_records:
+        object_pose_records: List[Dict] = []
+        for record in candidate_records:
+            if len(object_pose_records) >= target_pose_count:
+                break
+
             goal = EstimatePoseFoundationPose.Goal()
             goal.roi = record['detection']
             goal.use_segmentation_mask = False
             goal.mesh_file_path = effective_shared_mesh_file_path
             goal.object_frame_name = record['frame_name']
-            pose_result = self._send_action_goal_and_wait_result(
-                client=self._estimate_pose_client,
-                goal=goal,
-                timeout_sec=self._config.action_timeout_sec,
-                action_label=f'EstimatePoseFoundationPose({record["object_id"]})'
-            )
-            record['pose'] = self._extract_pose_from_result(pose_result, record['object_id'])
+            try:
+                pose_result = self._send_action_goal_and_wait_result(
+                    client=self._estimate_pose_client,
+                    goal=goal,
+                    timeout_sec=self._config.action_timeout_sec,
+                    action_label=f'EstimatePoseFoundationPose({record["object_id"]})',
+                    retry_count=self._config.estimate_pose_retry_count,
+                )
+                record['pose'] = self._extract_pose_from_result(
+                    pose_result, record['object_id'])
+                object_pose_records.append(record)
+            except RuntimeError as exception:
+                self._node.get_logger().warning(
+                    f'[scan_state] POSE_SKIP: object_id={record["object_id"]} '
+                    f'class={record["class_id"]} score={record["class_score"]:.4f} '
+                    f'failed: {exception}'
+                )
 
-        return selected_records
+        if not object_pose_records:
+            raise RuntimeError(
+                'Pose estimation failed for all selected detections.'
+            )
+
+        if len(object_pose_records) < target_pose_count:
+            self._node.get_logger().warning(
+                f'[scan_state] POSE_PARTIAL: requested {target_pose_count}, '
+                f'but only {len(object_pose_records)} pose(s) succeeded.'
+            )
+
+        return object_pose_records
 
     def _select_detections(
         self,
@@ -367,12 +408,18 @@ class DirectBinObjectPosePipeline:
         client: ActionClient,
         goal,
         timeout_sec: float,
-        action_label: str
+        action_label: str,
+        retry_count: Optional[int] = None
     ):
+        effective_retry_count = (
+            self._config.action_retry_count
+            if retry_count is None
+            else max(0, int(retry_count))
+        )
         return self._run_with_retries(
             state='ACTION',
             operation_label=action_label,
-            retry_count=self._config.action_retry_count,
+            retry_count=effective_retry_count,
             operation=lambda: self._send_action_goal_and_wait_result_once(
                 client=client,
                 goal=goal,
