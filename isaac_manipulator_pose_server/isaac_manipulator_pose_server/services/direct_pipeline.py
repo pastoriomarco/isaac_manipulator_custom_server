@@ -100,6 +100,7 @@ class DirectBinObjectPosePipeline:
 
         object_pose_records: List[Dict] = []
         attempted_records: List[Dict] = []
+        pose_attempt_count = 0
         had_any_candidates = False
 
         for detection_round in range(1, detection_round_limit + 1):
@@ -134,9 +135,9 @@ class DirectBinObjectPosePipeline:
                     'SELECTION',
                     f'Round {detection_round}: no novel candidates after memory/distance filtering.'
                 )
-                # If we already have at least one pose, no-novel means further rounds are
-                # unlikely to add value and can only increase latency.
-                if object_pose_records:
+                # If we have already attempted pose estimation and still find no novel boxes,
+                # further rounds are unlikely to add value and can only increase latency.
+                if attempted_records:
                     break
                 continue
 
@@ -169,7 +170,7 @@ class DirectBinObjectPosePipeline:
                 goal.object_frame_name = record['frame_name']
                 pose_timeout_sec = (
                     self._config.action_timeout_sec
-                    if not object_pose_records
+                    if pose_attempt_count == 0
                     else min(
                         self._config.action_timeout_sec,
                         self._config.additional_pose_timeout_sec,
@@ -193,6 +194,8 @@ class DirectBinObjectPosePipeline:
                         f'class={record["class_id"]} score={record["class_score"]:.4f} '
                         f'failed: {exception}'
                     )
+                finally:
+                    pose_attempt_count += 1
 
                 if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
                     break
