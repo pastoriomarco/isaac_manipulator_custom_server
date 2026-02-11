@@ -4,28 +4,35 @@ Service-first package for multi-object FoundationPose use in bin scenes, with op
 
 ## What it does
 
-The scan pipeline executes this sequence:
+This package supports two scan modes:
 
-1. `GetObjects` (`/get_objects`)
-1. Optional per-scan object selection (`object_key`) from `available_objects`
-1. Optional class-id filtering (`target_class_ids`)
-1. Optional shared mesh assignment for all selected objects (`/add_mesh_to_object`)
-1. Per-object TF frame naming (`/assign_name_to_object`)
-1. Per-object pose estimation (`/get_object_pose`)
-1. Optional cache clear (`/clear_objects`)
-1. Publish:
-   - `geometry_msgs/PoseArray` on `/isaac_manipulator_pose_server/object_poses`
-   - JSON summary on `/isaac_manipulator_pose_server/object_pose_summary`
+1. Legacy mode (`multi_object_pose_server`) through `object_info_server`:
+   1. `GetObjects` (`/get_objects`)
+   1. Optional per-scan object selection (`object_key`) from `available_objects`
+   1. Optional class-id filtering (`target_class_ids`)
+   1. Optional shared mesh assignment for all selected objects (`/add_mesh_to_object`)
+   1. Per-object TF frame naming (`/assign_name_to_object`)
+   1. Per-object pose estimation (`/get_object_pose`)
+   1. Optional cache clear (`/clear_objects`)
+2. Direct mode (`multi_object_pose_server_direct`) without `object_info_server`:
+   1. `DetectObjects` (`/detect_objects`)
+   1. Optional class-id filtering (`target_class_ids`) + class-aware NMS (`nms_iou_threshold`)
+   1. Per-detection FoundationPose (`/estimate_pose_foundation_pose`) using `shared_mesh_file_path`
+   1. Optional best-effort cache clear (`/clear_objects`)
 
-The package provides a persistent scan server (`multi_object_pose_server`) that stays alive and
-exposes services:
+Both modes publish:
+
+- `geometry_msgs/PoseArray` on `/isaac_manipulator_pose_server/object_poses`
+- JSON summary on `/isaac_manipulator_pose_server/object_pose_summary`
+
+Both servers expose services:
 
 - `/isaac_manipulator_pose_server/scan_bin_objects`
 - `/isaac_manipulator_pose_server/get_last_scan`
 
 ## Required upstream servers/topics
 
-Before running this package, you must have the Isaac Manipulator perception/servers pipeline up, including:
+For legacy mode (`multi_object_pose_server`), you need:
 
 - `/get_objects` action server
 - `/get_object_pose` action server
@@ -33,7 +40,13 @@ Before running this package, you must have the Isaac Manipulator perception/serv
 - `/assign_name_to_object` service
 - (optional) `/clear_objects` service
 
-These are typically provided by `isaac_manipulator_servers` + perception bringup.
+For direct mode (`multi_object_pose_server_direct`), you need:
+
+- `/detect_objects` action server
+- `/estimate_pose_foundation_pose` action server
+- (optional) `/clear_objects` service
+
+These are provided by `isaac_manipulator_servers` plus detector/FoundationPose bringup.
 
 Quick pre-check:
 
@@ -78,6 +91,12 @@ This custom package relies heavily on NVIDIA Isaac ROS / Isaac Manipulator inter
 ros2 launch isaac_manipulator_pose_server scan_server.launch.py
 ```
 
+Direct-mode server only:
+
+```bash
+ros2 launch isaac_manipulator_pose_server scan_server_direct.launch.py
+```
+
 Trigger a scan:
 
 ```bash
@@ -109,6 +128,8 @@ ros2 launch isaac_manipulator_pose_server scan_server_with_pipeline.launch.py \
 
 ### Recommended for rosbag/perception-only usage
 
+Legacy perception stack + legacy scan server:
+
 This launch starts a perception-only stack required by this package:
 
 - Selectable object detector (`RT_DETR` or `YOLOV8`)
@@ -139,6 +160,32 @@ ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   score_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_model.onnx" \
   mesh_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj" \
   texture_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/baked_mesh_tex0.png"
+```
+
+Direct perception stack + direct scan server (recommended when you want to bypass
+`object_info_server` and query detector + FoundationPose actions directly):
+
+```bash
+ros2 launch isaac_manipulator_pose_server perception_scan_server_direct.launch.py \
+  camera_type:=ISAAC_SIM \
+  use_sim_time:=false \
+  foundationpose_depth_topic:=/foundation_pose_server/depth \
+  rgb_image_topic:=/image_rect \
+  rgb_camera_info_topic:=/camera_info \
+  depth_image_topic:=/depth \
+  depth_camera_info_topic:=/camera_info \
+  rgb_image_width:=1280 rgb_image_height:=720 \
+  depth_image_width:=1280 depth_image_height:=720 \
+  input_qos:=DEFAULT output_qos:=DEFAULT \
+  input_fps:=8 dropped_fps:=8 \
+  rt_detr_confidence_threshold:=0.3 \
+  rtdetr_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/rt_detr_custom/model_isaac.plan" \
+  refine_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan" \
+  score_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_trt_engine.plan" \
+  refine_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_model.onnx" \
+  score_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_model.onnx" \
+  mesh_file_path:="$ISAAC_ROS_WS/src/isaac_sim_custom_examples/trocar_short.obj" \
+  texture_path:="$ISAAC_ROS_WS/src/isaac_sim_custom_examples/grey.png"
 ```
 
 Detector selection is launch-time configurable:
@@ -206,6 +253,11 @@ Important fields:
 - `available_objects`: object-key catalog used by per-scan `object_key` selection
 - `object_frame_prefix`: outputs names like `bin_object_0`, `bin_object_1`, ...
 - `max_objects`: limit how many detections to process (`0` = all)
+- `detect_objects_action_name`: direct-mode detector action endpoint
+- `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
+- `action_retry_count`: retries for action waits/calls in direct mode
+- `retry_backoff_sec`: delay between retries in direct mode
+- `nms_iou_threshold`: IoU threshold for class-aware suppression in direct mode
 
 For multi-object scans across detected classes, leave `object_key` empty and keep
 `target_class_ids` empty.

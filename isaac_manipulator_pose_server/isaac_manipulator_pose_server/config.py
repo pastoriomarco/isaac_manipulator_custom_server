@@ -23,8 +23,13 @@ class WorkflowConfig:
     add_mesh_service_name: str
     assign_name_service_name: str
     clear_objects_service_name: str
+    detect_objects_action_name: str
+    estimate_pose_action_name: str
     action_timeout_sec: float
     service_timeout_sec: float
+    action_retry_count: int
+    retry_backoff_sec: float
+    nms_iou_threshold: float
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -41,8 +46,13 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'add_mesh_service_name': '/add_mesh_to_object',
     'assign_name_service_name': '/assign_name_to_object',
     'clear_objects_service_name': '/clear_objects',
+    'detect_objects_action_name': '/detect_objects',
+    'estimate_pose_action_name': '/estimate_pose_foundation_pose',
     'action_timeout_sec': 20.0,
     'service_timeout_sec': 10.0,
+    'action_retry_count': 2,
+    'retry_backoff_sec': 0.5,
+    'nms_iou_threshold': 0.5,
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
@@ -119,8 +129,13 @@ def load_config(config_file: str) -> WorkflowConfig:
         add_mesh_service_name=str(merged_config['add_mesh_service_name']),
         assign_name_service_name=str(merged_config['assign_name_service_name']),
         clear_objects_service_name=str(merged_config['clear_objects_service_name']),
+        detect_objects_action_name=str(merged_config['detect_objects_action_name']),
+        estimate_pose_action_name=str(merged_config['estimate_pose_action_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
         service_timeout_sec=float(merged_config['service_timeout_sec']),
+        action_retry_count=max(0, int(merged_config['action_retry_count'])),
+        retry_backoff_sec=max(0.0, float(merged_config['retry_backoff_sec'])),
+        nms_iou_threshold=min(1.0, max(0.0, float(merged_config['nms_iou_threshold']))),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),

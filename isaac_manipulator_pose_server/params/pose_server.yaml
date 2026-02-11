@@ -7,7 +7,7 @@ pose_server:
   # target_class_ids: ['22']
 
   # Shared mesh used for all selected objects.
-  # Must exist on disk and be readable by ObjectInfoServer.
+  # Must exist on disk and be readable by FoundationPose/ObjectInfo server.
   shared_mesh_file_path: ''
 
   # Optional catalog for runtime object selection via ScanBinObjects.object_key.
@@ -43,15 +43,22 @@ pose_server:
   max_objects: 0
 
   # Action and service endpoints from isaac_manipulator_servers/ObjectInfoServer.
+  # Legacy path (object_info_server-based):
   get_objects_action_name: '/get_objects'
   get_object_pose_action_name: '/get_object_pose'
   add_mesh_service_name: '/add_mesh_to_object'
   assign_name_service_name: '/assign_name_to_object'
   clear_objects_service_name: '/clear_objects'
+  # Direct path (bypasses object_info_server):
+  detect_objects_action_name: '/detect_objects'
+  estimate_pose_action_name: '/estimate_pose_foundation_pose'
 
   # Timeouts (seconds).
   action_timeout_sec: 20.0
   service_timeout_sec: 10.0
+  action_retry_count: 2
+  retry_backoff_sec: 0.5
+  nms_iou_threshold: 0.5
 
   # Outputs.
   output_frame_id: 'base_link'
