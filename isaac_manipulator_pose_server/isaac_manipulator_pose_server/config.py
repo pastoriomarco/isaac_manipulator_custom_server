@@ -26,6 +26,7 @@ class WorkflowConfig:
     detect_objects_action_name: str
     estimate_pose_action_name: str
     action_timeout_sec: float
+    additional_pose_timeout_sec: float
     service_timeout_sec: float
     action_retry_count: int
     estimate_pose_retry_count: int
@@ -55,6 +56,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'detect_objects_action_name': '/detect_objects',
     'estimate_pose_action_name': '/estimate_pose_foundation_pose',
     'action_timeout_sec': 45.0,
+    'additional_pose_timeout_sec': 12.0,
     'service_timeout_sec': 10.0,
     'action_retry_count': 2,
     'estimate_pose_retry_count': 0,
@@ -152,6 +154,7 @@ def load_config(config_file: str) -> WorkflowConfig:
         detect_objects_action_name=str(merged_config['detect_objects_action_name']),
         estimate_pose_action_name=str(merged_config['estimate_pose_action_name']),
         action_timeout_sec=float(merged_config['action_timeout_sec']),
+        additional_pose_timeout_sec=max(0.1, float(merged_config['additional_pose_timeout_sec'])),
         service_timeout_sec=float(merged_config['service_timeout_sec']),
         action_retry_count=max(0, int(merged_config['action_retry_count'])),
         estimate_pose_retry_count=max(0, int(merged_config['estimate_pose_retry_count'])),

@@ -257,6 +257,7 @@ Important fields:
 - `estimate_pose_action_name`: direct-mode FoundationPose action endpoint
 - `action_retry_count`: retries for action waits/calls in direct mode
 - `estimate_pose_retry_count`: retries for each FoundationPose action in direct mode
+- `additional_pose_timeout_sec`: shorter timeout used for additional pose attempts after the first success in a multi-object scan
 - `retry_backoff_sec`: delay between retries in direct mode
 - `nms_iou_threshold`: IoU threshold for class-aware suppression in direct mode
 - `enable_bbox_memory`: keep short-term memory of successful boxes in direct mode

@@ -134,6 +134,10 @@ class DirectBinObjectPosePipeline:
                     'SELECTION',
                     f'Round {detection_round}: no novel candidates after memory/distance filtering.'
                 )
+                # If we already have at least one pose, no-novel means further rounds are
+                # unlikely to add value and can only increase latency.
+                if object_pose_records:
+                    break
                 continue
 
             had_any_candidates = True
@@ -163,11 +167,19 @@ class DirectBinObjectPosePipeline:
                 goal.use_segmentation_mask = False
                 goal.mesh_file_path = effective_shared_mesh_file_path
                 goal.object_frame_name = record['frame_name']
+                pose_timeout_sec = (
+                    self._config.action_timeout_sec
+                    if not object_pose_records
+                    else min(
+                        self._config.action_timeout_sec,
+                        self._config.additional_pose_timeout_sec,
+                    )
+                )
                 try:
                     pose_result = self._send_action_goal_and_wait_result(
                         client=self._estimate_pose_client,
                         goal=goal,
-                        timeout_sec=self._config.action_timeout_sec,
+                        timeout_sec=pose_timeout_sec,
                         action_label=f'EstimatePoseFoundationPose({record["object_id"]})',
                         retry_count=self._config.estimate_pose_retry_count,
                     )
