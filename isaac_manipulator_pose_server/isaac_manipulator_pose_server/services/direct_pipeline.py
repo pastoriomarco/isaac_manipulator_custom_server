@@ -31,6 +31,9 @@ class DirectBinObjectPosePipeline:
         self._detections_cv = threading.Condition()
         self._latest_detections_msg: Optional[Detection2DArray] = None
         self._latest_detections_monotonic_sec: float = 0.0
+        self._tracking_seed_records: List[Dict[str, Any]] = []
+        self._tracking_seed_timestamp_sec: float = 0.0
+        self._scans_since_detection_reacquire: int = 0
         self._detect_objects_client = ActionClient(
             self._node, DetectObjects, self._config.detect_objects_action_name)
         self._estimate_pose_client = ActionClient(
@@ -99,6 +102,14 @@ class DirectBinObjectPosePipeline:
             # Auto mode: allow one extra attempt beyond requested count.
             pose_attempt_limit = target_pose_count + 1
 
+        tracking_reacquire_due = (
+            target_pose_count > 0 and
+            self._config.tracking_first_enabled and
+            self._config.tracking_reacquire_interval_scans > 0 and
+            self._scans_since_detection_reacquire >=
+            self._config.tracking_reacquire_interval_scans
+        )
+
         single_shot_mode = target_pose_count > 0 and self._config.one_pose_per_detection_round
         self._log_state(
             'MODE',
@@ -111,7 +122,12 @@ class DirectBinObjectPosePipeline:
             f'{self._config.detection_action_fallback_timeout_sec:.1f}, '
             f'detection_action_fallback_retry_count='
             f'{self._config.detection_action_fallback_retry_count}, '
-            f'additional_pose_timeout_sec={self._config.additional_pose_timeout_sec:.1f}.'
+            f'additional_pose_timeout_sec={self._config.additional_pose_timeout_sec:.1f}, '
+            f'tracking_first_enabled={self._config.tracking_first_enabled}, '
+            f'tracking_seed_ttl_sec={self._config.tracking_seed_ttl_sec:.1f}, '
+            f'tracking_reacquire_interval_scans={self._config.tracking_reacquire_interval_scans}, '
+            f'scans_since_detection_reacquire={self._scans_since_detection_reacquire}, '
+            f'tracking_reacquire_due={tracking_reacquire_due}.'
         )
 
         if self._config.detection_source_mode == 'action':
@@ -128,6 +144,69 @@ class DirectBinObjectPosePipeline:
         pose_limit_reached = False
         had_any_candidates = False
         last_detection_receive_sec = 0.0
+        performed_detection_round = False
+        used_tracking_seed = False
+
+        if target_pose_count > 0 and self._config.tracking_first_enabled:
+            if tracking_reacquire_due:
+                self._log_state(
+                    'TRACKING',
+                    'Skipping cached ROI pass because periodic detection reacquire is due.'
+                )
+            else:
+                tracking_seed_candidates = self._build_tracking_seed_candidates(
+                    target_class_ids_filter=effective_target_class_ids,
+                )
+                if tracking_seed_candidates:
+                    used_tracking_seed = True
+                    had_any_candidates = True
+                    self._log_state(
+                        'TRACKING',
+                        f'Starting scan with {len(tracking_seed_candidates)} cached ROI candidate(s).'
+                    )
+                    selected_tracking_records = (
+                        tracking_seed_candidates
+                        if not single_shot_mode
+                        else [tracking_seed_candidates[0]]
+                    )
+                    for record in selected_tracking_records:
+                        if pose_attempt_limit > 0 and pose_attempt_count >= pose_attempt_limit:
+                            pose_limit_reached = True
+                            self._log_state(
+                                'POSE_LIMIT',
+                                f'Pose attempt limit reached ({pose_attempt_count}/'
+                                f'{pose_attempt_limit}); skipping remaining tracking candidates.'
+                            )
+                            break
+
+                        attempted_records.append(record)
+                        if self._estimate_pose_for_record(
+                            record=record,
+                            mesh_file_path=effective_shared_mesh_file_path,
+                            pose_attempt_count=pose_attempt_count,
+                            action_suffix='[tracking_seed]',
+                        ):
+                            object_pose_records.append(record)
+                        pose_attempt_count += 1
+
+                        if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
+                            break
+
+                    if object_pose_records:
+                        self._log_state(
+                            'TRACKING',
+                            f'Cached ROI pass succeeded for {len(object_pose_records)} object(s).'
+                        )
+                    else:
+                        self._log_state(
+                            'TRACKING',
+                            'Cached ROI pass yielded no poses; continuing with detection reacquire.'
+                        )
+                else:
+                    self._log_state(
+                        'TRACKING',
+                        'No valid cached ROI seeds available; continuing with detection reacquire.'
+                    )
 
         for detection_round in range(1, detection_round_limit + 1):
             if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
@@ -148,6 +227,7 @@ class DirectBinObjectPosePipeline:
                     newer_than_sec=last_detection_receive_sec,
                     allow_action_fallback=(len(object_pose_records) == 0),
                 )
+                performed_detection_round = True
             except RuntimeError as exception:
                 if object_pose_records:
                     self._node.get_logger().warning(
@@ -214,39 +294,13 @@ class DirectBinObjectPosePipeline:
                     )
                     break
                 attempted_records.append(record)
-                goal = EstimatePoseFoundationPose.Goal()
-                goal.roi = record['detection']
-                goal.use_segmentation_mask = False
-                goal.mesh_file_path = effective_shared_mesh_file_path
-                goal.object_frame_name = record['frame_name']
-                pose_timeout_sec = (
-                    self._config.action_timeout_sec
-                    if pose_attempt_count == 0
-                    else min(
-                        self._config.action_timeout_sec,
-                        self._config.additional_pose_timeout_sec,
-                    )
-                )
-                try:
-                    pose_result = self._send_action_goal_and_wait_result(
-                        client=self._estimate_pose_client,
-                        goal=goal,
-                        timeout_sec=pose_timeout_sec,
-                        action_label=f'EstimatePoseFoundationPose({record["object_id"]})',
-                        retry_count=self._config.estimate_pose_retry_count,
-                    )
-                    record['pose'] = self._extract_pose_from_result(
-                        pose_result, record['object_id'])
+                if self._estimate_pose_for_record(
+                    record=record,
+                    mesh_file_path=effective_shared_mesh_file_path,
+                    pose_attempt_count=pose_attempt_count,
+                ):
                     object_pose_records.append(record)
-                    self._remember_bbox(record)
-                except RuntimeError as exception:
-                    self._node.get_logger().warning(
-                        f'[scan_state] POSE_SKIP: object_id={record["object_id"]} '
-                        f'class={record["class_id"]} score={record["class_score"]:.4f} '
-                        f'failed: {exception}'
-                    )
-                finally:
-                    pose_attempt_count += 1
+                pose_attempt_count += 1
 
                 if target_pose_count > 0 and len(object_pose_records) >= target_pose_count:
                     break
@@ -278,6 +332,12 @@ class DirectBinObjectPosePipeline:
                     f'[scan_state] POSE_PARTIAL: stopped early due to pose attempt limit '
                     f'({pose_attempt_count}/{pose_attempt_limit}).'
                 )
+
+        self._update_tracking_seed_records(object_pose_records)
+        if performed_detection_round:
+            self._scans_since_detection_reacquire = 0
+        elif used_tracking_seed:
+            self._scans_since_detection_reacquire += 1
 
         return object_pose_records
 
@@ -314,6 +374,113 @@ class DirectBinObjectPosePipeline:
             selected_records = selected_records[:max_objects]
 
         return selected_records
+
+    def _build_tracking_seed_candidates(
+        self,
+        *,
+        target_class_ids_filter: List[str],
+    ) -> List[Dict]:
+        if not self._tracking_seed_records:
+            return []
+
+        if self._config.tracking_seed_ttl_sec > 0.0 and self._tracking_seed_timestamp_sec > 0.0:
+            age_sec = time.monotonic() - self._tracking_seed_timestamp_sec
+            if age_sec > self._config.tracking_seed_ttl_sec:
+                self._log_state(
+                    'TRACKING',
+                    f'Cached ROI seed expired (age={age_sec:.2f}s > '
+                    f'ttl={self._config.tracking_seed_ttl_sec:.2f}s).'
+                )
+                self._tracking_seed_records = []
+                self._tracking_seed_timestamp_sec = 0.0
+                return []
+
+        target_class_ids = {str(class_id) for class_id in target_class_ids_filter}
+        candidates: List[Dict] = []
+        for detection_index, seed_record in enumerate(self._tracking_seed_records):
+            detection = seed_record.get('detection')
+            if detection is None:
+                continue
+
+            class_id = str(seed_record.get('class_id', 'unknown'))
+            if target_class_ids and class_id not in target_class_ids:
+                continue
+
+            candidates.append({
+                'object_id': detection_index,
+                'class_id': class_id,
+                'class_score': float(seed_record.get('class_score', 0.0)),
+                'frame_name': f'{self._config.object_frame_prefix}_{detection_index}',
+                'detection': detection,
+            })
+
+        candidates.sort(key=lambda record: record['class_score'], reverse=True)
+        selected_records: List[Dict] = []
+        for candidate in candidates:
+            if self._is_suppressed_by_nms(candidate, selected_records):
+                continue
+            selected_records.append(candidate)
+        return selected_records
+
+    def _update_tracking_seed_records(self, object_pose_records: List[Dict]):
+        next_seed_records: List[Dict[str, Any]] = []
+        for record in object_pose_records:
+            detection = record.get('detection')
+            if detection is None:
+                continue
+
+            next_seed_records.append({
+                'class_id': str(record.get('class_id', 'unknown')),
+                'class_score': float(record.get('class_score', 0.0)),
+                'detection': detection,
+            })
+
+        self._tracking_seed_records = next_seed_records
+        self._tracking_seed_timestamp_sec = time.monotonic() if next_seed_records else 0.0
+
+    def _estimate_pose_for_record(
+        self,
+        *,
+        record: Dict,
+        mesh_file_path: str,
+        pose_attempt_count: int,
+        action_suffix: str = '',
+    ) -> bool:
+        goal = EstimatePoseFoundationPose.Goal()
+        goal.roi = record['detection']
+        goal.use_segmentation_mask = False
+        goal.mesh_file_path = mesh_file_path
+        goal.object_frame_name = record['frame_name']
+
+        pose_timeout_sec = (
+            self._config.action_timeout_sec
+            if pose_attempt_count == 0
+            else min(
+                self._config.action_timeout_sec,
+                self._config.additional_pose_timeout_sec,
+            )
+        )
+        action_label = f'EstimatePoseFoundationPose({record["object_id"]}){action_suffix}'
+
+        try:
+            pose_result = self._send_action_goal_and_wait_result(
+                client=self._estimate_pose_client,
+                goal=goal,
+                timeout_sec=pose_timeout_sec,
+                action_label=action_label,
+                retry_count=self._config.estimate_pose_retry_count,
+            )
+            record['pose'] = self._extract_pose_from_result(
+                pose_result, int(record['object_id']))
+            self._remember_bbox(record)
+            return True
+        except RuntimeError as exception:
+            self._node.get_logger().warning(
+                f'[scan_state] POSE_SKIP: object_id={record["object_id"]} '
+                f'class={record["class_id"]} score={float(record["class_score"]):.4f} '
+                f'failed: {exception}'
+            )
+            return False
 
     def _resolve_detection_topic_qos(self, qos_name: str):
         if qos_name == 'SENSOR_DATA':

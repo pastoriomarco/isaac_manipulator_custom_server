@@ -90,6 +90,14 @@ pose_server:
   # Cap total FoundationPose calls per scan.
   # 0 means auto = requested max_objects + 1 (when max_objects > 0).
   max_pose_attempts_per_scan: 0
+  # Try a cached ROI-first pass before re-running detector rounds.
+  tracking_first_enabled: true
+  # Max age of cached ROI seeds used by tracking-first pass (seconds).
+  # 0 disables age-based expiration.
+  tracking_seed_ttl_sec: 5.0
+  # Force one detection reacquire scan after this many tracking-only scans.
+  # 0 disables periodic forced reacquire.
+  tracking_reacquire_interval_scans: 3
 
   # Outputs.
   output_frame_id: 'base_link'

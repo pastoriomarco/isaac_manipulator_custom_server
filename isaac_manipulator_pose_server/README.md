@@ -276,6 +276,9 @@ Important fields:
 - `max_detection_rounds_per_scan`: max detect rounds when collecting `max_objects > 1`
 - `one_pose_per_detection_round`: if `false`, try multiple candidates from a detect round before re-detecting (faster)
 - `max_pose_attempts_per_scan`: cap FoundationPose calls per scan (`0` means auto=`max_objects+1`)
+- `tracking_first_enabled`: try cached ROI-first pose attempts before detector reacquire (bounded scans only)
+- `tracking_seed_ttl_sec`: maximum age for cached ROI seeds (`0` disables expiration)
+- `tracking_reacquire_interval_scans`: force a detector reacquire after N tracking-only scans (`0` disables forcing)
 
 For direct mode, keep `action_timeout_sec` high enough for first-run TensorRT warmup
 (for example `45.0` seconds).
@@ -285,6 +288,12 @@ For more stable direct-mode detection under load, start with:
 - `detection_topic_wait_timeout_sec: 5.0`
 - `detection_action_fallback_timeout_sec: 20.0`
 - `detection_action_fallback_retry_count: 1`
+
+For lower scan latency when repeatedly scanning the same scene, keep tracking-first enabled:
+
+- `tracking_first_enabled: true`
+- `tracking_seed_ttl_sec: 5.0`
+- `tracking_reacquire_interval_scans: 3`
 
 For multi-object scans across detected classes, leave `object_key` empty and keep
 `target_class_ids` empty.

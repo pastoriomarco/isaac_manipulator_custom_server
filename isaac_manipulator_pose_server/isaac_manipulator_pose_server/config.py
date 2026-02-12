@@ -46,6 +46,9 @@ class WorkflowConfig:
     max_detection_rounds_per_scan: int
     one_pose_per_detection_round: bool
     max_pose_attempts_per_scan: int
+    tracking_first_enabled: bool
+    tracking_seed_ttl_sec: float
+    tracking_reacquire_interval_scans: int
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
@@ -85,6 +88,9 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'max_detection_rounds_per_scan': 8,
     'one_pose_per_detection_round': False,
     'max_pose_attempts_per_scan': 0,
+    'tracking_first_enabled': True,
+    'tracking_seed_ttl_sec': 5.0,
+    'tracking_reacquire_interval_scans': 3,
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
@@ -213,6 +219,10 @@ def load_config(config_file: str) -> WorkflowConfig:
         one_pose_per_detection_round=_coerce_bool(
             merged_config['one_pose_per_detection_round']),
         max_pose_attempts_per_scan=max(0, int(merged_config['max_pose_attempts_per_scan'])),
+        tracking_first_enabled=_coerce_bool(merged_config['tracking_first_enabled']),
+        tracking_seed_ttl_sec=max(0.0, float(merged_config['tracking_seed_ttl_sec'])),
+        tracking_reacquire_interval_scans=max(
+            0, int(merged_config['tracking_reacquire_interval_scans'])),
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),
