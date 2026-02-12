@@ -119,6 +119,73 @@ def generate_launch_description():
         DeclareLaunchArgument('yolov8_num_classes', default_value='80'),
         DeclareLaunchArgument('yolov8_network_image_width', default_value='640'),
         DeclareLaunchArgument('yolov8_network_image_height', default_value='640'),
+        # YOLOv8 alias arguments matching isaac_ros_custom_bringup/yolov8_inference.launch.py
+        DeclareLaunchArgument(
+            'model_file_path',
+            default_value=LaunchConfiguration('yolov8_model_file_path')
+        ),
+        DeclareLaunchArgument(
+            'engine_file_path',
+            default_value=LaunchConfiguration('yolov8_engine_file_path')
+        ),
+        DeclareLaunchArgument(
+            'input_tensor_names',
+            default_value=LaunchConfiguration('yolov8_input_tensor_names')
+        ),
+        DeclareLaunchArgument(
+            'input_binding_names',
+            default_value=LaunchConfiguration('yolov8_input_binding_names')
+        ),
+        DeclareLaunchArgument(
+            'output_tensor_names',
+            default_value=LaunchConfiguration('yolov8_output_tensor_names')
+        ),
+        DeclareLaunchArgument(
+            'output_binding_names',
+            default_value=LaunchConfiguration('yolov8_output_binding_names')
+        ),
+        DeclareLaunchArgument(
+            'confidence_threshold',
+            default_value=LaunchConfiguration('yolov8_confidence_threshold')
+        ),
+        DeclareLaunchArgument(
+            'nms_threshold',
+            default_value=LaunchConfiguration('yolov8_nms_threshold')
+        ),
+        DeclareLaunchArgument(
+            'num_classes',
+            default_value=LaunchConfiguration('yolov8_num_classes')
+        ),
+        DeclareLaunchArgument(
+            'network_image_width',
+            default_value=LaunchConfiguration('yolov8_network_image_width')
+        ),
+        DeclareLaunchArgument(
+            'network_image_height',
+            default_value=LaunchConfiguration('yolov8_network_image_height')
+        ),
+        DeclareLaunchArgument(
+            'image_input_topic',
+            default_value=LaunchConfiguration('rgb_image_topic')
+        ),
+        DeclareLaunchArgument(
+            'camera_info_input_topic',
+            default_value=LaunchConfiguration('rgb_camera_info_topic')
+        ),
+        DeclareLaunchArgument(
+            'tensor_rt_input_topic',
+            default_value='/yolov8_encoder/planar_tensor'
+        ),
+        DeclareLaunchArgument(
+            'force_engine_update',
+            default_value='False',
+            choices=['True', 'False', 'true', 'false']
+        ),
+        DeclareLaunchArgument(
+            'verbose',
+            default_value='False',
+            choices=['True', 'False', 'true', 'false']
+        ),
         DeclareLaunchArgument('input_fps', default_value='30'),
         DeclareLaunchArgument('dropped_fps', default_value='28'),
         DeclareLaunchArgument('input_qos', default_value='SENSOR_DATA'),
@@ -246,19 +313,22 @@ def generate_launch_description():
             os.path.join(yolo_bringup_share, 'launch', 'yolov8_inference.launch.py')
         ),
         launch_arguments={
-            'model_file_path': LaunchConfiguration('yolov8_model_file_path'),
-            'engine_file_path': LaunchConfiguration('yolov8_engine_file_path'),
-            'input_tensor_names': LaunchConfiguration('yolov8_input_tensor_names'),
-            'input_binding_names': LaunchConfiguration('yolov8_input_binding_names'),
-            'output_tensor_names': LaunchConfiguration('yolov8_output_tensor_names'),
-            'output_binding_names': LaunchConfiguration('yolov8_output_binding_names'),
-            'confidence_threshold': LaunchConfiguration('yolov8_confidence_threshold'),
-            'nms_threshold': LaunchConfiguration('yolov8_nms_threshold'),
-            'num_classes': LaunchConfiguration('yolov8_num_classes'),
-            'network_image_width': LaunchConfiguration('yolov8_network_image_width'),
-            'network_image_height': LaunchConfiguration('yolov8_network_image_height'),
-            'image_input_topic': LaunchConfiguration('scan_rgb_image_topic'),
-            'camera_info_input_topic': LaunchConfiguration('scan_rgb_camera_info_topic'),
+            'model_file_path': LaunchConfiguration('model_file_path'),
+            'engine_file_path': LaunchConfiguration('engine_file_path'),
+            'input_tensor_names': LaunchConfiguration('input_tensor_names'),
+            'input_binding_names': LaunchConfiguration('input_binding_names'),
+            'output_tensor_names': LaunchConfiguration('output_tensor_names'),
+            'output_binding_names': LaunchConfiguration('output_binding_names'),
+            'confidence_threshold': LaunchConfiguration('confidence_threshold'),
+            'nms_threshold': LaunchConfiguration('nms_threshold'),
+            'num_classes': LaunchConfiguration('num_classes'),
+            'network_image_width': LaunchConfiguration('network_image_width'),
+            'network_image_height': LaunchConfiguration('network_image_height'),
+            'image_input_topic': LaunchConfiguration('image_input_topic'),
+            'camera_info_input_topic': LaunchConfiguration('camera_info_input_topic'),
+            'tensor_rt_input_topic': LaunchConfiguration('tensor_rt_input_topic'),
+            'force_engine_update': LaunchConfiguration('force_engine_update'),
+            'verbose': LaunchConfiguration('verbose'),
         }.items(),
         condition=detector_is_yolov8,
     )

@@ -210,17 +210,20 @@ ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   input_qos:=DEFAULT output_qos:=DEFAULT \
   input_fps:=8 dropped_fps:=8 \
   object_detection_model:=YOLOV8 \
-  yolov8_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.onnx" \
-  yolov8_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.plan" \
-  yolov8_input_tensor_names:='["input_tensor"]' \
-  yolov8_input_binding_names:='["images"]' \
-  yolov8_output_tensor_names:='["output_tensor"]' \
-  yolov8_output_binding_names:='["output0"]' \
-  yolov8_confidence_threshold:=0.25 \
-  yolov8_nms_threshold:=0.45 \
-  yolov8_num_classes:=1 \
-  yolov8_network_image_width:=640 \
-  yolov8_network_image_height:=640 \
+  model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.onnx" \
+  engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/yolov8/your_model.plan" \
+  input_tensor_names:='["input_tensor"]' \
+  input_binding_names:='["images"]' \
+  output_tensor_names:='["output_tensor"]' \
+  output_binding_names:='["output0"]' \
+  confidence_threshold:=0.25 \
+  nms_threshold:=0.45 \
+  num_classes:=1 \
+  network_image_width:=640 \
+  network_image_height:=640 \
+  tensor_rt_input_topic:=/yolov8_encoder/planar_tensor \
+  force_engine_update:=False \
+  verbose:=True \
   refine_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_trt_engine.plan" \
   score_engine_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/score_trt_engine.plan" \
   refine_model_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/models/foundationpose/refine_model.onnx" \
