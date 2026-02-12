@@ -54,7 +54,7 @@ pose_server:
   # Direct-mode detection source:
   # - topic: subscribe directly to detector output (avoids detect_objects input starvation)
   # - action: call /detect_objects action
-  detection_source_mode: 'topic'
+  detection_source_mode: 'action'
   detections_topic_name: '/detections_output'
   detections_topic_qos: 'SENSOR_DATA'
   # Max acceptable age (seconds) for detector topic data in topic mode.
@@ -72,10 +72,10 @@ pose_server:
   # Timeouts (seconds).
   action_timeout_sec: 45.0
   # Timeout for pose attempts after the first pose attempt in a multi-object scan.
-  additional_pose_timeout_sec: 4.0
+  additional_pose_timeout_sec: 12.0
   service_timeout_sec: 10.0
   action_retry_count: 2
-  estimate_pose_retry_count: 0
+  estimate_pose_retry_count: 1
   retry_backoff_sec: 0.5
   nms_iou_threshold: 0.5
   # Single-shot bbox-selection memory for multi-object scans:
@@ -91,7 +91,7 @@ pose_server:
   # 0 means auto = requested max_objects + 1 (when max_objects > 0).
   max_pose_attempts_per_scan: 0
   # Try a cached ROI-first pass before re-running detector rounds.
-  tracking_first_enabled: true
+  tracking_first_enabled: false
   # Max age of cached ROI seeds used by tracking-first pass (seconds).
   # 0 disables age-based expiration.
   tracking_seed_ttl_sec: 5.0
