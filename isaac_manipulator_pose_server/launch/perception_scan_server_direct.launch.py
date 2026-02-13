@@ -327,6 +327,7 @@ def generate_launch_description():
             'image_input_topic': LaunchConfiguration('image_input_topic'),
             'camera_info_input_topic': LaunchConfiguration('camera_info_input_topic'),
             'tensor_rt_input_topic': LaunchConfiguration('tensor_rt_input_topic'),
+            'detections_output_topic': 'detections_output',
             'force_engine_update': LaunchConfiguration('force_engine_update'),
             'verbose': LaunchConfiguration('verbose'),
         }.items(),
@@ -460,8 +461,8 @@ def generate_launch_description():
 
     scan_server = Node(
         package='isaac_manipulator_pose_server',
-        executable='multi_object_pose_server_direct',
-        name='multi_object_pose_server_direct',
+        executable='multi_object_pose_server_continuous',
+        name='multi_object_pose_server_continuous',
         output='screen',
         arguments=['--config-file', LaunchConfiguration('config_file')],
     )

@@ -1,5 +1,15 @@
 # Migration Plan: Continuous Multi-Worker Pose Pipeline
 
+## Implementation status (current branch)
+
+- Added continuous orchestration interfaces (`PipelineCommand`, `TrackedObject*`, `PipelineStatus`,
+  `MarkObjectUsed`).
+- Added continuous runtime modules under
+  `isaac_manipulator_pose_server/continuous/` and cut over direct server entrypoint to
+  `multi_object_pose_server_continuous`.
+- Added continuous perception launch with configurable `fp_worker_count` worker namespaces.
+- Hardened YOLOv8 bringup contract with explicit `detections_output_topic` launch argument.
+
 ## 1) Why migrate
 
 Current direct scan flow is request-driven and bursty:
@@ -391,3 +401,75 @@ At runtime, clients should rely on:
 4. `pipeline_status` topic (optional but recommended) for observability.
 
 Legacy one-shot service (`scan_bin_objects`) remains available as compatibility wrapper.
+
+## 15) Handoff snapshot (2026-02-13)
+
+This section captures what was completed and what is still blocking end-to-end success.
+
+### Completed in code
+
+1. Continuous interfaces are present and built:
+   - `isaac_manipulator_server_interfaces/msg/PipelineCommand.msg`
+   - `isaac_manipulator_server_interfaces/msg/TrackedObject.msg`
+   - `isaac_manipulator_server_interfaces/msg/TrackedObjectArray.msg`
+   - `isaac_manipulator_server_interfaces/msg/PipelineStatus.msg`
+   - `isaac_manipulator_server_interfaces/srv/MarkObjectUsed.srv`
+2. Continuous orchestrator modules exist under:
+   - `isaac_manipulator_pose_server/isaac_manipulator_pose_server/continuous/`
+3. Direct entrypoint is cut over to continuous:
+   - `multi_object_pose_server_direct -> ...multi_object_pose_server_continuous:main`
+4. Continuous launch supports worker count override:
+   - `--fp-worker-count` passed from `perception_scan_server_continuous.launch.py`
+5. Worker namespace/action wiring was fixed so worker action endpoint is reachable:
+   - observed endpoint: `/fp_worker_0/estimate_pose_foundation_pose`
+6. YOLO contract includes explicit detector output topic argument:
+   - `isaac_ros_custom_bringup/isaac_ros_3/launch/yolov8_inference.launch.py` has
+     `detections_output_topic`
+7. Continuous launch now forwards `foundationpose_depth_topic` to worker FP include
+   (`scan_foundationpose_depth_topic -> foundation_pose_server_depth_topic_name`), so
+   worker FP depth subscription is no longer hardcoded to `.../depth_metric`.
+
+### Runtime behavior now (latest verified)
+
+1. Pipeline command is received and mode switches to running.
+2. Detector candidates are available (`queued_candidates > 0`).
+3. Worker goals are dispatched and accepted by `foundation_pose_server`.
+4. Worker is no longer dropped by action discovery.
+5. Blocking failure remains inside FoundationPose runtime:
+   - error: `Input depth image and segmentation image have different dimension`
+   - effect: `foundationpose_node` graph terminates, action never returns pose
+   - orchestrator times out worker goal and retries.
+
+### Current blocker
+
+Depth and segmentation streams given to worker FoundationPose do not match in dimensions at
+runtime, so no pose result is produced.
+
+### What is missing to complete migration acceptance
+
+1. Resolve worker FP input dimension mismatch and verify stable pose outputs.
+2. Confirm `tracked_objects` and `pipeline_status.active_count` update from 0 to >= target.
+3. Run regression checks for legacy wrappers:
+   - `/isaac_manipulator_pose_server/scan_bin_objects`
+   - `/isaac_manipulator_pose_server/get_last_scan`
+4. Execute planned unit/component/launch tests from this migration plan.
+5. Finalize docs with one known-good command matrix for:
+   - `ISAAC_SIM` + YOLO + continuous workers
+   - depth topic/frame alignment requirements.
+
+### Immediate next diagnostic commands
+
+Use these on a running system to confirm the exact mismatch:
+
+```bash
+ros2 topic echo --once /fp_worker_0/foundation_pose_server/depth | rg "width|height|encoding"
+ros2 topic echo --once /fp_worker_0/segmentation | rg "width|height|encoding"
+ros2 topic echo --once /fp_worker_0/pose_estimation/output
+ros2 topic echo --once /isaac_manipulator_pose_server/tracked_objects
+ros2 topic echo --once /isaac_manipulator_pose_server/pipeline_status
+```
+
+Expected success condition:
+- Depth and segmentation dimensions are equal.
+- `/fp_worker_0/pose_estimation/output` publishes.
+- `pipeline_status.active_count` becomes `>= 1` for target `1`.

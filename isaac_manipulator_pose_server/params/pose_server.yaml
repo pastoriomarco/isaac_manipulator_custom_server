@@ -103,3 +103,32 @@ pose_server:
   output_frame_id: 'base_link'
   output_pose_array_topic: '/isaac_manipulator_pose_server/object_poses'
   output_summary_topic: '/isaac_manipulator_pose_server/object_pose_summary'
+
+  # Continuous orchestrator mode.
+  continuous_mode_enabled: true
+  fp_worker_count: 2
+  # Optional explicit namespaces list. Leave empty to auto-generate /fp_worker_0..N-1.
+  fp_worker_namespaces: []
+
+  # Continuous control/status APIs.
+  pipeline_command_topic_name: '/isaac_manipulator_pose_server/pipeline_command'
+  tracked_objects_topic_name: '/isaac_manipulator_pose_server/tracked_objects'
+  pipeline_status_topic_name: '/isaac_manipulator_pose_server/pipeline_status'
+  mark_object_used_service_name: '/isaac_manipulator_pose_server/mark_object_used'
+
+  # Publishing and scheduling rates.
+  tracked_objects_publish_hz: 3.0
+  pipeline_status_publish_hz: 2.0
+  detector_processing_hz: 10.0
+
+  # Continuous target/object lifecycle behavior.
+  target_count_default: 0
+  first_pose_timeout_sec: 20.0
+  tracking_update_timeout_sec: 6.0
+  object_lost_ttl_sec: 2.5
+  dispatch_cooldown_sec: 0.25
+  max_candidates_per_cycle: 8
+
+  # Legacy scan service blocking wrapper.
+  scan_service_wait_timeout_sec: 30.0
+  scan_service_poll_hz: 10.0

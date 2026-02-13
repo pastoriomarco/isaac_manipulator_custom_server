@@ -5,6 +5,7 @@ from ament_index_python.packages import PackageNotFoundError, get_package_share_
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    GroupAction,
     IncludeLaunchDescription,
     OpaqueFunction,
     SetLaunchConfiguration,
@@ -12,7 +13,7 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
-from launch_ros.actions import LoadComposableNodes, Node
+from launch_ros.actions import LoadComposableNodes, Node, PushRosNamespace
 from launch_ros.descriptions import ComposableNode
 
 
@@ -35,6 +36,150 @@ def _validate_detector_setup(
                 f'{missing}. Build/install them and source the workspace before launching.'
             )
     return []
+
+
+def _create_worker_groups(context, *, bringup_share: str):
+    worker_count = int(context.perform_substitution(LaunchConfiguration('fp_worker_count')))
+    if worker_count < 1:
+        raise RuntimeError('fp_worker_count must be >= 1')
+
+    actions = []
+    for worker_index in range(worker_count):
+        namespace = f'fp_worker_{worker_index}'
+        worker_container = Node(
+            name='manipulator_container',
+            namespace=f'/{namespace}',
+            package='rclcpp_components',
+            executable='component_container_mt',
+            output='screen',
+        )
+
+        # Worker-local mask generation from worker-local ROI topic.
+        detection2d_to_mask_node = ComposableNode(
+            name=f'worker_{worker_index}_detection2_d_to_mask',
+            namespace=f'/{namespace}',
+            package='isaac_ros_foundationpose',
+            plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
+            parameters=[{
+                'mask_width': LaunchConfiguration('scan_rgb_image_width'),
+                'mask_height': LaunchConfiguration('scan_rgb_image_height'),
+                'input_qos': LaunchConfiguration('scan_output_qos'),
+                'output_qos': LaunchConfiguration('scan_output_qos'),
+            }],
+            remappings=[
+                ('detection2_d', 'foundation_pose_server/bbox'),
+                ('segmentation', 'segmentation_rgb'),
+            ],
+        )
+        resize_mask_node = ComposableNode(
+            name=f'worker_{worker_index}_resize_mask',
+            namespace=f'/{namespace}',
+            package='isaac_ros_image_proc',
+            plugin='nvidia::isaac_ros::image_proc::ResizeNode',
+            parameters=[{
+                'input_width': LaunchConfiguration('scan_rgb_image_width'),
+                'input_height': LaunchConfiguration('scan_rgb_image_height'),
+                'output_width': LaunchConfiguration('scan_depth_image_width'),
+                'output_height': LaunchConfiguration('scan_depth_image_height'),
+                'keep_aspect_ratio': False,
+                'disable_padding': False,
+                'encoding_desired': 'mono8',
+                'input_qos': LaunchConfiguration('scan_output_qos'),
+                'output_qos': LaunchConfiguration('scan_output_qos'),
+                'use_latest_camera_info': True,
+                'drop_old_messages': False,
+            }],
+            remappings=[
+                ('image', 'segmentation_rgb'),
+                ('camera_info', 'foundation_pose_server/camera_info'),
+                ('resize/image', 'segmentation'),
+                ('resize/camera_info', 'camera_info_segmentation'),
+            ],
+        )
+        worker_mask_nodes = LoadComposableNodes(
+            target_container=f'/{namespace}/manipulator_container',
+            composable_node_descriptions=[
+                detection2d_to_mask_node,
+                resize_mask_node,
+            ],
+        )
+
+        worker_foundationpose_launch = GroupAction(actions=[
+            PushRosNamespace(namespace),
+            IncludeLaunchDescription(
+                PythonLaunchDescriptionSource(
+                    os.path.join(bringup_share, 'launch', 'include', 'foundationpose.launch.py')
+                ),
+                launch_arguments={
+                    'camera_type': LaunchConfiguration('scan_camera_type'),
+                    'rgb_image_topic': 'foundation_pose_server/image',
+                    'rgb_image_width': LaunchConfiguration('scan_rgb_image_width'),
+                    'rgb_image_height': LaunchConfiguration('scan_rgb_image_height'),
+                    'depth_image_width': LaunchConfiguration('scan_depth_image_width'),
+                    'depth_image_height': LaunchConfiguration('scan_depth_image_height'),
+                    'realsense_depth_image_topic': 'foundation_pose_server/depth',
+                    'foundation_pose_server_depth_topic_name': LaunchConfiguration(
+                        'scan_foundationpose_depth_topic'
+                    ),
+                    'realsense_depth_camera_info_topic': LaunchConfiguration(
+                        'scan_depth_camera_info_topic'),
+                    'segmentation_mask_camera_info_topic': 'foundation_pose_server/camera_info',
+                    'segmentation_mask_topic': 'segmentation',
+                    'output_pose_estimate_topic': 'pose_estimation/output',
+                    'mesh_file_path': LaunchConfiguration('mesh_file_path'),
+                    'texture_path': LaunchConfiguration('texture_path'),
+                    'refine_model_file_path': LaunchConfiguration('refine_model_file_path'),
+                    'refine_engine_file_path': LaunchConfiguration('refine_engine_file_path'),
+                    'score_model_file_path': LaunchConfiguration('score_model_file_path'),
+                    'score_engine_file_path': LaunchConfiguration('score_engine_file_path'),
+                    'refine_iterations': LaunchConfiguration('refine_iterations'),
+                    'symmetry_axes': LaunchConfiguration('symmetry_axes'),
+                    'tf_frame_name': LaunchConfiguration('tf_frame_name'),
+                    'foundationpose_sensor_qos_config': LaunchConfiguration('scan_input_qos'),
+                    'discard_old_messages': LaunchConfiguration('scan_discard_old_messages'),
+                    'discard_msg_older_than_ms': LaunchConfiguration('discard_msg_older_than_ms'),
+                    'enable_dnn_depth_in_realsense':
+                        LaunchConfiguration('scan_enable_dnn_depth_in_realsense'),
+                }.items(),
+            ),
+        ])
+
+        foundation_pose_server_node = ComposableNode(
+            name='foundation_pose_server',
+            namespace=f'/{namespace}',
+            package='isaac_manipulator_servers',
+            plugin='nvidia::isaac::manipulation::FoundationPoseServer',
+            parameters=[{
+                'action_name': 'estimate_pose_foundation_pose',
+                'in_img_topic_name': LaunchConfiguration('scan_rgb_image_topic'),
+                'out_img_topic_name': 'foundation_pose_server/image',
+                'in_camera_info_topic_name': LaunchConfiguration('scan_rgb_camera_info_topic'),
+                'out_camera_info_topic_name': 'foundation_pose_server/camera_info',
+                'in_depth_topic_name': LaunchConfiguration('scan_depth_image_topic'),
+                'out_depth_topic_name': 'foundation_pose_server/depth',
+                'out_bbox_topic_name': 'foundation_pose_server/bbox',
+                'in_pose_estimate_topic_name': 'pose_estimation/output',
+                'out_pose_estimate_topic_name': 'foundation_pose_server/pose_estimation/output',
+                'out_segmented_mask_topic_name': 'foundation_pose_server/segmented_mask',
+                # Keep this relative so parameter updates resolve to the worker-local FP node.
+                'foundation_pose_node_name': 'foundationpose_node',
+                'input_qos': LaunchConfiguration('scan_input_qos'),
+                'result_and_output_qos': LaunchConfiguration('scan_output_qos'),
+            }],
+        )
+        worker_foundation_pose_server_launch = LoadComposableNodes(
+            target_container=f'/{namespace}/manipulator_container',
+            composable_node_descriptions=[foundation_pose_server_node],
+        )
+
+        actions.extend([
+            worker_container,
+            worker_mask_nodes,
+            worker_foundationpose_launch,
+            worker_foundation_pose_server_launch,
+        ])
+
+    return actions
 
 
 def generate_launch_description():
@@ -68,6 +213,11 @@ def generate_launch_description():
             'config_file',
             default_value=default_config,
             description='Path to pose server config YAML.'
+        ),
+        DeclareLaunchArgument(
+            'fp_worker_count',
+            default_value='2',
+            description='Number of isolated FoundationPose worker namespaces/processes.',
         ),
         DeclareLaunchArgument('camera_type', default_value='REALSENSE'),
         DeclareLaunchArgument(
@@ -103,7 +253,7 @@ def generate_launch_description():
             'object_detection_model',
             default_value='RT_DETR',
             choices=['RT_DETR', 'YOLOV8'],
-            description='Object detector frontend used for GetObjects (RT_DETR or YOLOV8).',
+            description='Object detector frontend used for DetectObjects (RT_DETR or YOLOV8).',
         ),
         DeclareLaunchArgument('rtdetr_engine_file_path', default_value='/tmp/rtdetr.plan'),
         DeclareLaunchArgument('rt_detr_confidence_threshold', default_value='0.7'),
@@ -228,7 +378,15 @@ def generate_launch_description():
         SetLaunchConfiguration(
             'scan_depth_image_height', LaunchConfiguration('depth_image_height')),
         SetLaunchConfiguration(
-            'scan_foundationpose_depth_topic', LaunchConfiguration('foundationpose_depth_topic')),
+            'scan_foundationpose_depth_topic',
+            PythonExpression(
+                [
+                    "'",
+                    LaunchConfiguration('foundationpose_depth_topic'),
+                    "'.lstrip('/')",
+                ]
+            ),
+        ),
         SetLaunchConfiguration('scan_input_qos', LaunchConfiguration('input_qos')),
         SetLaunchConfiguration('scan_output_qos', LaunchConfiguration('output_qos')),
         SetLaunchConfiguration(
@@ -334,93 +492,6 @@ def generate_launch_description():
         condition=detector_is_yolov8,
     )
 
-    # For YOLOv8 mode, build FoundationPose masks from the per-request bbox emitted by
-    # foundation_pose_server (/foundation_pose_server/bbox), analogous to RT-DETR ROI mode.
-    yolov8_detection2d_to_mask_node = ComposableNode(
-        name='yolov8_detection2_d_to_mask',
-        package='isaac_ros_foundationpose',
-        plugin='nvidia::isaac_ros::foundationpose::Detection2DToMask',
-        parameters=[{
-            'mask_width': LaunchConfiguration('scan_rgb_image_width'),
-            'mask_height': LaunchConfiguration('scan_rgb_image_height'),
-            'input_qos': LaunchConfiguration('scan_output_qos'),
-            'output_qos': LaunchConfiguration('scan_output_qos'),
-        }],
-        remappings=[
-            ('detection2_d', '/foundation_pose_server/bbox'),
-            ('segmentation', 'yolov8_segmentation_rgb'),
-        ],
-    )
-    yolov8_resize_mask_node = ComposableNode(
-        name='yolov8_resize_mask_node',
-        package='isaac_ros_image_proc',
-        plugin='nvidia::isaac_ros::image_proc::ResizeNode',
-        parameters=[{
-            'input_width': LaunchConfiguration('scan_rgb_image_width'),
-            'input_height': LaunchConfiguration('scan_rgb_image_height'),
-            'output_width': LaunchConfiguration('scan_depth_image_width'),
-            'output_height': LaunchConfiguration('scan_depth_image_height'),
-            'keep_aspect_ratio': False,
-            'disable_padding': False,
-            'encoding_desired': 'mono8',
-            'input_qos': LaunchConfiguration('scan_output_qos'),
-            'output_qos': LaunchConfiguration('scan_output_qos'),
-            'use_latest_camera_info': True,
-            'drop_old_messages': False,
-        }],
-        remappings=[
-            ('image', 'yolov8_segmentation_rgb'),
-            ('camera_info', '/foundation_pose_server/camera_info'),
-            ('resize/image', 'segmentation'),
-            ('resize/camera_info', 'camera_info_segmentation'),
-        ],
-    )
-    yolov8_mask_nodes = LoadComposableNodes(
-        target_container='manipulator_container',
-        composable_node_descriptions=[
-            yolov8_detection2d_to_mask_node,
-            yolov8_resize_mask_node,
-        ],
-        condition=detector_is_yolov8,
-    )
-
-    # FoundationPose DNN node pipeline.
-    foundationpose_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(bringup_share, 'launch', 'include', 'foundationpose.launch.py')
-        ),
-        launch_arguments={
-            'camera_type': LaunchConfiguration('scan_camera_type'),
-            'rgb_image_topic': '/foundation_pose_server/image',
-            'rgb_image_width': LaunchConfiguration('scan_rgb_image_width'),
-            'rgb_image_height': LaunchConfiguration('scan_rgb_image_height'),
-            'depth_image_width': LaunchConfiguration('scan_depth_image_width'),
-            'depth_image_height': LaunchConfiguration('scan_depth_image_height'),
-            'realsense_depth_image_topic': '/foundation_pose_server/depth',
-            'foundation_pose_server_depth_topic_name': LaunchConfiguration(
-                'scan_foundationpose_depth_topic'),
-            'realsense_depth_camera_info_topic': LaunchConfiguration(
-                'scan_depth_camera_info_topic'),
-            'segmentation_mask_camera_info_topic': '/foundation_pose_server/camera_info',
-            'segmentation_mask_topic': 'segmentation',
-            'output_pose_estimate_topic': '/pose_estimation/output',
-            'mesh_file_path': LaunchConfiguration('mesh_file_path'),
-            'texture_path': LaunchConfiguration('texture_path'),
-            'refine_model_file_path': LaunchConfiguration('refine_model_file_path'),
-            'refine_engine_file_path': LaunchConfiguration('refine_engine_file_path'),
-            'score_model_file_path': LaunchConfiguration('score_model_file_path'),
-            'score_engine_file_path': LaunchConfiguration('score_engine_file_path'),
-            'refine_iterations': LaunchConfiguration('refine_iterations'),
-            'symmetry_axes': LaunchConfiguration('symmetry_axes'),
-            'tf_frame_name': LaunchConfiguration('tf_frame_name'),
-            'foundationpose_sensor_qos_config': LaunchConfiguration('scan_input_qos'),
-            'discard_old_messages': LaunchConfiguration('scan_discard_old_messages'),
-            'discard_msg_older_than_ms': LaunchConfiguration('discard_msg_older_than_ms'),
-            'enable_dnn_depth_in_realsense':
-                LaunchConfiguration('scan_enable_dnn_depth_in_realsense'),
-        }.items(),
-    )
-
     # Detection server maps detector outputs into DetectObjects action.
     object_detection_server_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -438,48 +509,20 @@ def generate_launch_description():
         }.items(),
     )
 
-    # FoundationPose server wraps FP action endpoint used by ObjectInfoServer.
-    foundation_pose_server_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(servers_share, 'launch', 'foundation_pose_server.launch.py')
-        ),
-        launch_arguments={
-            'fp_in_img_topic_name': LaunchConfiguration('scan_rgb_image_topic'),
-            'fp_out_img_topic_name': '/foundation_pose_server/image',
-            'fp_in_camera_info_topic_name': LaunchConfiguration('scan_rgb_camera_info_topic'),
-            'fp_out_camera_info_topic_name': '/foundation_pose_server/camera_info',
-            'fp_in_depth_topic_name': LaunchConfiguration('scan_depth_image_topic'),
-            'fp_out_depth_topic_name': '/foundation_pose_server/depth',
-            'fp_out_bbox_topic_name': '/foundation_pose_server/bbox',
-            'fp_in_pose_estimate_topic_name': '/pose_estimation/output',
-            'fp_out_pose_estimate_topic_name': '/foundation_pose_server/pose_estimation/output',
-            'fp_out_segmented_mask_topic_name': '/foundation_pose_server/segmented_mask',
-            'fp_input_qos': LaunchConfiguration('scan_input_qos'),
-            'fp_result_and_output_qos': LaunchConfiguration('scan_output_qos'),
-        }.items(),
-    )
-
-    # ObjectInfoServer exposes get_objects/get_object_pose/add_mesh/assign_name/clear_objects.
-    object_info_server_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(servers_share, 'launch', 'object_info_server.launch.py')
-        ),
-        launch_arguments={
-            'standalone': 'false',
-            # Keep backend value RT_DETR for DetectObjects-action-compatible detectors
-            # (RT-DETR and YOLOv8 both route through object_detection_server).
-            'object_detection_backend': 'RT_DETR',
-            'pose_estimation_backend': 'FOUNDATION_POSE',
-            'segmentation_backend': 'NONE',
-        }.items(),
+    worker_groups = OpaqueFunction(
+        function=_create_worker_groups,
+        kwargs={'bringup_share': bringup_share},
     )
 
     scan_server = Node(
         package='isaac_manipulator_pose_server',
-        executable='multi_object_pose_server',
-        name='multi_object_pose_server',
+        executable='multi_object_pose_server_continuous',
+        name='multi_object_pose_server_continuous',
         output='screen',
-        arguments=['--config-file', LaunchConfiguration('config_file')],
+        arguments=[
+            '--config-file', LaunchConfiguration('config_file'),
+            '--fp-worker-count', LaunchConfiguration('fp_worker_count'),
+        ],
     )
 
     return LaunchDescription([
@@ -489,10 +532,7 @@ def generate_launch_description():
         manipulator_container,
         rtdetr_launch,
         yolov8_launch,
-        yolov8_mask_nodes,
-        foundationpose_launch,
         object_detection_server_launch,
-        foundation_pose_server_launch,
-        object_info_server_launch,
+        worker_groups,
         scan_server,
     ])

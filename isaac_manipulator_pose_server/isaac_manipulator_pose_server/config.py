@@ -52,6 +52,24 @@ class WorkflowConfig:
     output_frame_id: str
     output_pose_array_topic: str
     output_summary_topic: str
+    continuous_mode_enabled: bool
+    fp_worker_count: int
+    fp_worker_namespaces: List[str]
+    pipeline_command_topic_name: str
+    tracked_objects_topic_name: str
+    pipeline_status_topic_name: str
+    mark_object_used_service_name: str
+    tracked_objects_publish_hz: float
+    pipeline_status_publish_hz: float
+    detector_processing_hz: float
+    target_count_default: int
+    first_pose_timeout_sec: float
+    tracking_update_timeout_sec: float
+    object_lost_ttl_sec: float
+    dispatch_cooldown_sec: float
+    max_candidates_per_cycle: int
+    scan_service_wait_timeout_sec: float
+    scan_service_poll_hz: float
 
 
 _DEFAULT_CONFIG: Dict[str, Any] = {
@@ -94,6 +112,24 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
     'output_frame_id': 'base_link',
     'output_pose_array_topic': '/isaac_manipulator_pose_server/object_poses',
     'output_summary_topic': '/isaac_manipulator_pose_server/object_pose_summary',
+    'continuous_mode_enabled': True,
+    'fp_worker_count': 2,
+    'fp_worker_namespaces': [],
+    'pipeline_command_topic_name': '/isaac_manipulator_pose_server/pipeline_command',
+    'tracked_objects_topic_name': '/isaac_manipulator_pose_server/tracked_objects',
+    'pipeline_status_topic_name': '/isaac_manipulator_pose_server/pipeline_status',
+    'mark_object_used_service_name': '/isaac_manipulator_pose_server/mark_object_used',
+    'tracked_objects_publish_hz': 3.0,
+    'pipeline_status_publish_hz': 2.0,
+    'detector_processing_hz': 10.0,
+    'target_count_default': 0,
+    'first_pose_timeout_sec': 20.0,
+    'tracking_update_timeout_sec': 6.0,
+    'object_lost_ttl_sec': 2.5,
+    'dispatch_cooldown_sec': 0.25,
+    'max_candidates_per_cycle': 8,
+    'scan_service_wait_timeout_sec': 30.0,
+    'scan_service_poll_hz': 10.0,
 }
 
 
@@ -179,6 +215,26 @@ def load_config(config_file: str) -> WorkflowConfig:
             mesh_file_path=mesh_file_path,
         )
 
+    fp_worker_count = max(1, int(merged_config['fp_worker_count']))
+    raw_worker_namespaces = merged_config.get('fp_worker_namespaces') or []
+    if not isinstance(raw_worker_namespaces, list):
+        raise ValueError(
+            f'Invalid "fp_worker_namespaces" format in {config_path}. Expected a list.'
+        )
+    fp_worker_namespaces = [
+        str(namespace).strip()
+        for namespace in raw_worker_namespaces
+        if str(namespace).strip()
+    ]
+    if not fp_worker_namespaces:
+        fp_worker_namespaces = [f'/fp_worker_{index}' for index in range(fp_worker_count)]
+    if len(fp_worker_namespaces) < fp_worker_count:
+        missing = fp_worker_count - len(fp_worker_namespaces)
+        next_index = len(fp_worker_namespaces)
+        fp_worker_namespaces.extend(
+            f'/fp_worker_{next_index + offset}' for offset in range(missing)
+        )
+
     return WorkflowConfig(
         target_class_ids=target_class_ids,
         shared_mesh_file_path=str(merged_config['shared_mesh_file_path']),
@@ -226,4 +282,25 @@ def load_config(config_file: str) -> WorkflowConfig:
         output_frame_id=str(merged_config['output_frame_id']),
         output_pose_array_topic=str(merged_config['output_pose_array_topic']),
         output_summary_topic=str(merged_config['output_summary_topic']),
+        continuous_mode_enabled=_coerce_bool(merged_config['continuous_mode_enabled']),
+        fp_worker_count=fp_worker_count,
+        fp_worker_namespaces=fp_worker_namespaces[:fp_worker_count],
+        pipeline_command_topic_name=str(merged_config['pipeline_command_topic_name']),
+        tracked_objects_topic_name=str(merged_config['tracked_objects_topic_name']),
+        pipeline_status_topic_name=str(merged_config['pipeline_status_topic_name']),
+        mark_object_used_service_name=str(merged_config['mark_object_used_service_name']),
+        tracked_objects_publish_hz=max(0.1, float(merged_config['tracked_objects_publish_hz'])),
+        pipeline_status_publish_hz=max(
+            0.1, float(merged_config['pipeline_status_publish_hz'])),
+        detector_processing_hz=max(0.1, float(merged_config['detector_processing_hz'])),
+        target_count_default=max(0, int(merged_config['target_count_default'])),
+        first_pose_timeout_sec=max(0.1, float(merged_config['first_pose_timeout_sec'])),
+        tracking_update_timeout_sec=max(
+            0.1, float(merged_config['tracking_update_timeout_sec'])),
+        object_lost_ttl_sec=max(0.1, float(merged_config['object_lost_ttl_sec'])),
+        dispatch_cooldown_sec=max(0.0, float(merged_config['dispatch_cooldown_sec'])),
+        max_candidates_per_cycle=max(1, int(merged_config['max_candidates_per_cycle'])),
+        scan_service_wait_timeout_sec=max(
+            0.1, float(merged_config['scan_service_wait_timeout_sec'])),
+        scan_service_poll_hz=max(0.1, float(merged_config['scan_service_poll_hz'])),
     )

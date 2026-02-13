@@ -1,0 +1,15 @@
+# Logical tracked object id.
+int32 object_id
+
+# Optional frame cross-check.
+string frame_name
+
+# Optional caller reason (for example "picked").
+string reason
+---
+# Request status.
+bool success
+string message
+
+# True when object existed and was active before this call.
+bool object_was_active

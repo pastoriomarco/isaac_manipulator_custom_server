@@ -19,6 +19,12 @@ This package supports two scan modes:
    1. Optional class-id filtering (`target_class_ids`) + class-aware NMS (`nms_iou_threshold`)
    1. Per-detection FoundationPose (`/estimate_pose_foundation_pose`) using `shared_mesh_file_path`
    1. Optional best-effort cache clear (`/clear_objects`)
+3. Continuous orchestrator mode (`multi_object_pose_server_continuous`, breaking cutover for direct mode):
+   1. Topic-controlled lifecycle (`/isaac_manipulator_pose_server/pipeline_command`)
+   1. Configurable worker pool (`fp_worker_count`) over namespaced FP action endpoints
+   1. Continuous tracked output (`/isaac_manipulator_pose_server/tracked_objects`)
+   1. Mark-used feedback service (`/isaac_manipulator_pose_server/mark_object_used`)
+   1. Legacy service wrappers remain (`scan_bin_objects`, `get_last_scan`) with blocking snapshot semantics
 
 Both modes publish:
 
@@ -29,6 +35,12 @@ Both servers expose services:
 
 - `/isaac_manipulator_pose_server/scan_bin_objects`
 - `/isaac_manipulator_pose_server/get_last_scan`
+- `/isaac_manipulator_pose_server/mark_object_used` (continuous mode)
+
+Continuous mode publishes:
+
+- `/isaac_manipulator_pose_server/tracked_objects` (`TrackedObjectArray`)
+- `/isaac_manipulator_pose_server/pipeline_status` (`PipelineStatus`)
 
 ## Required upstream servers/topics
 
@@ -92,6 +104,28 @@ This custom package relies heavily on NVIDIA Isaac ROS / Isaac Manipulator inter
 ros2 launch isaac_manipulator_pose_server scan_server.launch.py
 ```
 
+Continuous direct cutover server:
+
+```bash
+ros2 launch isaac_manipulator_pose_server scan_server_direct.launch.py
+```
+
+Start continuous pipeline (example target=2):
+
+```bash
+ros2 topic pub --once /isaac_manipulator_pose_server/pipeline_command \
+  isaac_manipulator_server_interfaces/msg/PipelineCommand \
+  "{command: 1, target_count: 2, object_key: '', clear_before_start: false, clear_after_stop: false}"
+```
+
+Mark one tracked object as consumed:
+
+```bash
+ros2 service call /isaac_manipulator_pose_server/mark_object_used \
+  isaac_manipulator_server_interfaces/srv/MarkObjectUsed \
+  "{object_id: 0, frame_name: '', reason: 'picked'}"
+```
+
 Direct-mode server only:
 
 ```bash
@@ -141,7 +175,7 @@ This launch starts a perception-only stack required by this package:
 It does not launch UR driver, MoveIt, cuMotion, or nvblox.
 
 ```bash
-ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
+ros2 launch isaac_manipulator_pose_server perception_scan_server_continuous.launch.py \
   camera_type:=ISAAC_SIM \
   use_sim_time:=true \
   foundationpose_depth_topic:=/foundation_pose_server/depth \
@@ -162,6 +196,10 @@ ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   mesh_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj" \
   texture_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/baked_mesh_tex0.png"
 ```
+
+If your simulator publishes camera info on a different topic, pass both
+`rgb_camera_info_topic` and `depth_camera_info_topic` explicitly (for this repo’s
+default sim stack, both are usually `/camera_info`).
 
 Direct perception stack + direct scan server (recommended when you want to bypass
 `object_info_server` and query detector + FoundationPose actions directly):
@@ -189,6 +227,15 @@ ros2 launch isaac_manipulator_pose_server perception_scan_server_direct.launch.p
   texture_path:="$ISAAC_ROS_WS/src/isaac_sim_custom_examples/grey.png"
 ```
 
+Continuous perception stack with isolated FP workers:
+
+```bash
+ros2 launch isaac_manipulator_pose_server perception_scan_server_continuous.launch.py \
+  fp_worker_count:=2 \
+  camera_type:=ISAAC_SIM \
+  use_sim_time:=false
+```
+
 Detector selection is launch-time configurable:
 
 - `object_detection_model:=RT_DETR` (default)
@@ -197,14 +244,14 @@ Detector selection is launch-time configurable:
 Example with YOLOv8 detector frontend:
 
 ```bash
-ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
+ros2 launch isaac_manipulator_pose_server perception_scan_server_continuous.launch.py \
   camera_type:=ISAAC_SIM \
   use_sim_time:=true \
   foundationpose_depth_topic:=/foundation_pose_server/depth \
   rgb_image_topic:=/image_rect \
-  rgb_camera_info_topic:=/camera_info_rect \
+  rgb_camera_info_topic:=/camera_info \
   depth_image_topic:=/depth \
-  depth_camera_info_topic:=/camera_info_rect \
+  depth_camera_info_topic:=/camera_info \
   rgb_image_width:=640 rgb_image_height:=480 \
   depth_image_width:=640 depth_image_height:=480 \
   input_qos:=DEFAULT output_qos:=DEFAULT \
@@ -231,6 +278,9 @@ ros2 launch isaac_manipulator_pose_server perception_scan_server.launch.py \
   mesh_file_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/soup_can.obj" \
   texture_path:="$ISAAC_ROS_WS/isaac_ros_assets/isaac_ros_foundationpose/soup_can/baked_mesh_tex0.png"
 ```
+
+If your sim publishes camera info on a different topic, override both
+`rgb_camera_info_topic` and `depth_camera_info_topic` accordingly.
 
 For rosbags that already publish metric depth (`32FC1`), run FoundationPose in
 non-convert-metric mode:

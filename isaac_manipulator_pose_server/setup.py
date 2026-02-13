@@ -39,7 +39,9 @@ setup(
             'multi_object_pose_server = '
             'isaac_manipulator_pose_server.scripts.multi_object_pose_server:main',
             'multi_object_pose_server_direct = '
-            'isaac_manipulator_pose_server.scripts.multi_object_pose_server_direct:main',
+            'isaac_manipulator_pose_server.scripts.multi_object_pose_server_continuous:main',
+            'multi_object_pose_server_continuous = '
+            'isaac_manipulator_pose_server.scripts.multi_object_pose_server_continuous:main',
         ],
     },
 )

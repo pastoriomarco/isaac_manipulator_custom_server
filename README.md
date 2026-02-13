@@ -22,6 +22,11 @@ This repo provides:
 - Multi-object aggregation logic on top of Isaac Manipulator perception
   servers, with optional object-specific filtering per scan.
 - Launch files for perception-only bringup and scan server bringup.
+- Continuous orchestration interfaces for topic-driven control and tracked-object streaming:
+  - `/isaac_manipulator_pose_server/pipeline_command`
+  - `/isaac_manipulator_pose_server/tracked_objects`
+  - `/isaac_manipulator_pose_server/pipeline_status`
+  - `/isaac_manipulator_pose_server/mark_object_used`
 
 This repo intentionally does **not** provide:
 

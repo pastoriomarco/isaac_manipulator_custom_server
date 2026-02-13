@@ -34,6 +34,11 @@ The goal is to reuse Isaac Manipulator perception/action servers rather than re-
 1. Return complete scan data in one response:
    - object IDs, classes, scores, frame names, poses, and JSON summary
 1. Keep runtime configurable via YAML (`params/pose_server.yaml`) and request-time controls for per-scan behavior.
+1. Add a continuous orchestrator runtime (`multi_object_pose_server_continuous`) with:
+   - topic-based lifecycle commands
+   - configurable multi-worker FoundationPose action fan-out
+   - continuous tracked object/status topics
+   - legacy scan service wrappers for compatibility
 
 ## Package Boundaries
 
@@ -47,6 +52,13 @@ The goal is to reuse Isaac Manipulator perception/action servers rather than re-
 This repo depends on Isaac Manipulator interfaces/servers and is intentionally not a full orchestration stack.
 
 Public services and output topics use `/isaac_manipulator_pose_server/*`.
+
+Continuous-mode interfaces include:
+
+- `/isaac_manipulator_pose_server/pipeline_command`
+- `/isaac_manipulator_pose_server/tracked_objects`
+- `/isaac_manipulator_pose_server/pipeline_status`
+- `/isaac_manipulator_pose_server/mark_object_used`
 
 ## Pipeline Design
 

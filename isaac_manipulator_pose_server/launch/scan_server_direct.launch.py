@@ -22,8 +22,8 @@ def generate_launch_description():
 
     server = Node(
         package='isaac_manipulator_pose_server',
-        executable='multi_object_pose_server_direct',
-        name='multi_object_pose_server_direct',
+        executable='multi_object_pose_server_continuous',
+        name='multi_object_pose_server_continuous',
         output='screen',
         arguments=[
             '--config-file', LaunchConfiguration('config_file'),
